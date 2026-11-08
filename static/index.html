@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#174b3c">
+  <meta name="description" content="A little luck. A lot of rivalry. Play a free, real-time game of Bingo with a friend. Two players, 25 numbers, five lines to win.">
+  <title>The Bingo Club — A game for two</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="The Bingo Club home">
+      <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span>the bingo club<span class="brand-dot">.</span></span>
+    </a>
+    <div class="header-note"><span class="small-star" aria-hidden="true">✳</span> GOOD COMPANY. GREAT GAMES.</div>
+    <button class="button button-outline button-small" id="rules-button"><span class="help-icon" aria-hidden="true">?</span> How to play</button>
+  </header>
+
+  <main class="page-shell">
+    <section class="hero" aria-labelledby="hero-title">
+      <div>
+        <div class="eyebrow"><span class="tiny-dot"></span> THE TWO-PLAYER CLASSIC, BACK ONLINE</div>
+        <h1 id="hero-title">A little luck.<br> A lot of <em>rivalry.</em><span class="hero-spark" aria-hidden="true">✳</span></h1>
+        <p>Your favorite game. Your favorite person. Let the numbers do their thing.</p>
+      </div>
+      <div class="hero-ticket" aria-label="2 players, 25 numbers, 5 lines to win">
+        <div class="ticket-top">ONE ROOM. TWO RIVALS.</div>
+        <div class="ticket-stats"><div><strong>02</strong><span>PLAYERS</span></div><div><strong>25</strong><span>NUMBERS</span></div><div><strong>05</strong><span>LINES TO WIN</span></div></div>
+        <div class="ticket-bottom"><span>NO SIGN-UP. JUST SHOW UP.</span><span aria-hidden="true">↗</span></div>
+      </div>
+    </section>
+
+    <section class="game-layout" aria-label="Bingo game">
+      <aside class="left-column">
+        <section class="panel lobby-panel" id="entry-panel" aria-labelledby="entry-heading">
+          <div class="eyebrow muted">PULL UP A CHAIR</div>
+          <h2 id="entry-heading">Good games<br> start with a friend.</h2>
+          <p class="secondary-text">Make a room, share the code,<br> and settle a friendly rivalry.</p>
+          <div class="entry-tabs" role="tablist" aria-label="Enter a game">
+            <button id="create-tab" class="entry-tab active" role="tab" aria-selected="true" aria-controls="entry-form">Create room</button>
+            <button id="join-tab" class="entry-tab" role="tab" aria-selected="false" aria-controls="entry-form" tabindex="-1">Join room</button>
+          </div>
+          <form id="entry-form" role="tabpanel" aria-labelledby="create-tab">
+            <label for="player-name">YOUR NAME</label>
+            <input id="player-name" name="name" placeholder="What should we call you?" maxlength="18" autocomplete="nickname" required>
+            <div id="room-code-field" hidden>
+              <label for="room-code">ROOM CODE</label>
+              <input id="room-code" name="room" placeholder="e.g. ABC234" maxlength="6" minlength="6" pattern="[A-Za-z2-9]{6}" autocomplete="off" autocapitalize="characters" spellcheck="false">
+            </div>
+            <p class="form-error" id="form-error" role="alert" hidden></p>
+            <button class="button button-primary entry-submit" id="entry-submit" type="submit"><span>Create a room</span><span aria-hidden="true">↗</span></button>
+          </form>
+          <div class="privacy-note"><span aria-hidden="true">⌁</span> A private room. Just the two of you.</div>
+        </section>
+
+        <section class="panel room-panel" id="room-panel" aria-labelledby="room-heading" hidden>
+          <div class="section-label"><span class="eyebrow muted">YOUR PRIVATE TABLE</span><span class="round-label" id="round-label">ROUND 01</span></div>
+          <h2 id="room-heading">Room for two.</h2>
+          <div class="invite-block"><span class="eyebrow muted">INVITE CODE</span><strong id="invite-code">———</strong><button id="copy-code" class="text-button">Copy code <span aria-hidden="true">⧉</span></button></div>
+          <button id="copy-link" class="button button-outline full-width">Copy invite link <span aria-hidden="true">↗</span></button>
+          <p class="invite-hint" id="invite-hint">Send the link to your friend to get started.</p>
+          <div class="roster" id="roster"></div>
+          <div class="room-notice" id="room-notice" role="status" hidden></div>
+          <button class="button button-primary full-width" id="ready-button">I'm ready <span aria-hidden="true">✓</span></button>
+          <p class="ready-note" id="ready-note">Shuffle your card, then make it official.</p>
+          <button class="text-button leave-button" id="leave-button">Leave room <span aria-hidden="true">↗</span></button>
+        </section>
+
+        <div class="little-note"><span class="note-star" aria-hidden="true">✳</span><p>A familiar game.<br><strong>A fresh little competition.</strong></p></div>
+      </aside>
+
+      <section class="board-panel" aria-labelledby="board-title">
+        <div class="board-header"><div><div class="eyebrow muted" id="board-eyebrow">THE PLAYING FIELD</div><h2 id="board-title">Your lucky card</h2></div><span class="card-tag" id="card-tag">1–25 EDITION</span></div>
+        <div class="bingo-letters" id="bingo-letters" aria-label="0 of 5 lines completed"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>
+        <div class="bingo-board" id="bingo-board" role="group" aria-label="Your Bingo card"></div>
+        <div class="board-status" id="board-status" role="status" aria-live="polite"><span class="status-dot"></span><span id="board-status-text">Your next game starts here.</span></div>
+        <div class="board-bottom"><span id="board-hint">Create or join a room to get your card.</span><button id="shuffle-button" class="text-button" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h3c5 0 7 12 12 12h3m-4-4 4 4-4 4M3 18h3c2 0 4-3 5-5m2-3c2-3 3-4 5-4h3m-4-4 4 4-4 4"/></svg> Shuffle card</button></div>
+      </section>
+
+      <aside class="right-column">
+        <section class="panel score-panel" aria-labelledby="score-title">
+          <div class="section-label"><h2 class="eyebrow" id="score-title">THE RACE TO BINGO</h2><span class="live-badge" id="live-badge"><span></span> STANDBY</span></div>
+          <p class="score-intro">Five lines. Bragging rights forever.</p>
+          <div class="score-player"><div class="score-name"><span id="your-score-name">You</span><strong id="your-score-count">0<span>/5</span></strong></div><div class="mini-bingo" id="your-progress" aria-label="Your progress: 0 of 5"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div></div>
+          <div class="score-player opponent"><div class="score-name"><span id="opponent-score-name">Your future rival</span><strong id="opponent-score-count">0<span>/5</span></strong></div><div class="mini-bingo" id="opponent-progress" aria-label="Opponent progress: 0 of 5"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div></div>
+          <p class="score-footnote">Rows, columns & diagonals all count.</p>
+        </section>
+        <section class="calls-panel" aria-labelledby="last-call-title">
+          <div class="last-call"><div><h2 class="eyebrow" id="last-call-title">LAST NUMBER</h2><p id="last-caller">The suspense begins…</p></div><div class="number-ball" id="last-number">–</div></div>
+          <div class="called-header"><span>CALLED NUMBERS</span><span id="called-count">0 / 25</span></div>
+          <div class="number-tray" id="number-tray" aria-label="Called numbers"></div>
+          <div class="recent-calls" id="recent-calls"><span class="tiny-dot"></span><span>Every call marks both cards.</span></div>
+        </section>
+        <button id="sound-button" class="sound-button" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M11 4 5 9H2v6h3l6 5V4Z"/><path id="sound-wave" d="m16 9 6 6m0-6-6 6"/></svg><span>Sound off</span></button>
+      </aside>
+    </section>
+
+    <section class="how-strip" aria-label="The rules at a glance"><span class="eyebrow">THE SHORT VERSION</span><div><span class="step-number">01</span><span>Invite your rival</span></div><span class="step-arrow" aria-hidden="true">→</span><div><span class="step-number">02</span><span>Take turns calling numbers</span></div><span class="step-arrow" aria-hidden="true">→</span><div><span class="step-number">03</span><span>Complete 5 lines. Win.</span></div></section>
+  </main>
+  <footer class="site-footer"><span>Less scrolling. More playing.</span><span>MADE FOR A LITTLE FRIENDLY COMPETITION <span aria-hidden="true">✳</span></span></footer>
+
+  <dialog id="rules-dialog" class="modal"><div class="modal-content"><button class="close-button" id="close-rules" aria-label="Close rules">×</button><span class="eyebrow muted">THE HOUSE RULES</span><h2>Five lines.<br>One glorious Bingo.</h2><ol class="rules-list"><li><strong>Bring a friend.</strong><p>Create a private room and share its link or six-character code. Each player gets a different shuffled 5 × 5 card with numbers 1–25.</p></li><li><strong>Make it official.</strong><p>Shuffle your card as much as you like, then press “I'm ready.” The game starts when both players are ready.</p></li><li><strong>Take your turn.</strong><p>Click any uncalled number on your card. It gets marked on both cards automatically. The room creator calls first; you alternate turns.</p></li><li><strong>Collect five lines.</strong><p>A full row, column, or diagonal earns a letter in B–I–N–G–O. Reach five lines to win. If both players reach five on the same call, it's a draw!</p></li></ol><div class="rules-tip">Lost connection? Reopen the same tab within five minutes to keep your seat. For a rematch, both players choose “Play again”; the starting player alternates.</div><button id="got-it" class="button button-primary full-width">Got it. Let's play <span aria-hidden="true">↗</span></button></div></dialog>
+  <dialog id="result-dialog" class="modal result-modal"><div class="modal-content"><div class="result-flower" aria-hidden="true">✳</div><span class="eyebrow muted" id="result-eyebrow">A BEAUTIFUL LITTLE VICTORY</span><h2 id="result-title">Bingo, you did it!</h2><p id="result-description"></p><div class="result-stats" id="result-stats"></div><button class="button button-primary full-width" id="rematch-button">Play again <span aria-hidden="true">↗</span></button><button class="text-button" id="view-board-button">Take a look at the card</button></div></dialog>
+  <dialog id="leave-dialog" class="modal"><div class="modal-content"><span class="eyebrow muted">CALLING IT A DAY?</span><h2>Leave this table?</h2><p class="secondary-text">Your current game will end and your seat will be released. Your friend can invite someone for a fresh game.</p><div class="leave-actions"><button class="button button-outline" id="stay-button">Keep playing</button><button class="button button-primary" id="confirm-leave">Leave room</button></div></div></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <div id="confetti" class="confetti" aria-hidden="true"></div>
+  <noscript><div class="noscript-message">Please enable JavaScript to play Bingo with a friend.</div></noscript>
+</body>
+</html>
