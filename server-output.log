@@ -1,0 +1,32 @@
+INFO:     127.0.0.1:51259 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51259 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53757 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53757 - "GET /static/favicon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53757 - "POST /api/rooms HTTP/1.1" 201 Created
+INFO:     127.0.0.1:64970 - "GET /?room=MURMCT HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64970 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58882 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58882 - "GET /static/favicon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58882 - "POST /api/rooms/MURMCT/join HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64331 - "GET /?room=MURMCT HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64331 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62134 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62134 - "GET /static/favicon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62134 - "POST /api/rooms/MURMCT/join HTTP/1.1" 409 Conflict
+INFO:     127.0.0.1:53757 - "GET /?room=MURMCT HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58882 - "GET /?room=MURMCT HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52274 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52274 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60616 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60616 - "GET /static/favicon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60616 - "GET /?room=MURMCT HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60616 - "POST /api/rooms/MURMCT/join HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58701 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64481 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64481 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59007 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64481 - "GET /static/favicon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59342 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59342 - "GET /static/style.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57091 - "GET /static/app.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57091 - "POST /api/rooms HTTP/1.1" 201 Created
