@@ -21,6 +21,9 @@ let toastTimer = null;
 let resultShown = "";
 let soundEnabled = readStorage(localStorage, "bingo-club-sound", false);
 let audioContext = null;
+let manualBoard = Array(25).fill(null);
+let manualIndex = 0;
+let manualSavePending = false;
 
 function readStorage(storage, key, fallback) {
   try { return JSON.parse(storage.getItem(key)) ?? fallback; } catch { return fallback; }
@@ -99,6 +102,95 @@ const tray = Array.from({ length: 25 }, (_, index) => {
   return span;
 });
 
+const manualCells = Array.from({ length: 25 }, (_, index) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "manual-cell";
+  button.addEventListener("click", () => { manualIndex = index; renderManual(); });
+  button.addEventListener("keydown", (event) => {
+    const offset = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -5, ArrowDown: 5 }[event.key];
+    if (offset) {
+      event.preventDefault();
+      manualIndex = Math.max(0, Math.min(24, index + offset));
+      renderManual();
+      manualCells[manualIndex].focus();
+    } else if (["Backspace", "Delete"].includes(event.key)) {
+      event.preventDefault();
+      manualBoard[index] = null;
+      renderManual();
+    }
+  });
+  $("manual-grid").append(button);
+  return button;
+});
+
+const manualNumbers = Array.from({ length: 25 }, (_, index) => {
+  const number = index + 1;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = number;
+  button.addEventListener("click", () => {
+    const previousIndex = manualBoard.indexOf(number);
+    if (previousIndex !== -1) manualBoard[previousIndex] = manualBoard[manualIndex];
+    manualBoard[manualIndex] = number;
+    const nextEmpty = manualBoard.findIndex((value, i) => value === null && i > manualIndex);
+    const firstEmpty = manualBoard.indexOf(null);
+    if (nextEmpty !== -1 || firstEmpty !== -1) manualIndex = nextEmpty !== -1 ? nextEmpty : firstEmpty;
+    $("manual-error").hidden = true;
+    renderManual();
+  });
+  $("manual-numbers").append(button);
+  return button;
+});
+
+function renderManual() {
+  const me = state?.players.find((player) => player.id === state.you);
+  const editable = connected && state?.phase === "waiting" && !me?.ready && !actionPending;
+  manualCells.forEach((cell, index) => {
+    cell.textContent = manualBoard[index] ?? "·";
+    cell.disabled = !editable;
+    cell.classList.toggle("selected", index === manualIndex);
+    cell.classList.toggle("empty", manualBoard[index] === null);
+    cell.setAttribute("aria-pressed", String(index === manualIndex));
+    cell.setAttribute("aria-label", `Row ${Math.floor(index / 5) + 1}, column ${index % 5 + 1}: ${manualBoard[index] ?? "empty"}`);
+  });
+  manualNumbers.forEach((button, index) => {
+    const used = manualBoard.includes(index + 1);
+    button.disabled = !editable;
+    button.classList.toggle("used", used);
+    button.setAttribute("aria-pressed", String(used));
+    button.setAttribute("aria-label", `${index + 1}${used ? ", already placed; choose to move or swap" : ", available"}`);
+  });
+  const count = manualBoard.filter((number) => number !== null).length;
+  $("manual-count").textContent = `${count} / 25 placed`;
+  $("save-manual").disabled = !editable || count !== 25;
+  $("save-manual").textContent = manualSavePending ? "Saving…" : "Save card";
+  $("clear-manual").disabled = !editable || count === 0;
+  $("clear-manual-cell").disabled = !editable || manualBoard[manualIndex] === null;
+}
+
+$("manual-button").addEventListener("click", () => {
+  manualBoard = state.board_mode === "manual" ? state.board.slice() : Array(25).fill(null);
+  manualIndex = 0;
+  manualSavePending = false;
+  $("manual-error").hidden = true;
+  renderManual();
+  $("manual-dialog").showModal();
+  manualCells[0].focus();
+});
+for (const id of ["close-manual", "cancel-manual"]) $(id).addEventListener("click", () => $("manual-dialog").close());
+$("clear-manual").addEventListener("click", () => {
+  manualBoard = Array(25).fill(null);
+  manualIndex = 0;
+  renderManual();
+});
+$("clear-manual-cell").addEventListener("click", () => { manualBoard[manualIndex] = null; renderManual(); });
+$("save-manual").addEventListener("click", () => {
+  manualSavePending = true;
+  if (!sendAction({ type: "set_board", board: manualBoard.slice() })) manualSavePending = false;
+  renderManual();
+});
+
 elements["room-code"].addEventListener("input", (event) => {
   event.target.value = event.target.value.toUpperCase().replace(/[^A-Z2-9]/g, "");
 });
@@ -125,6 +217,11 @@ elements["entry-form"].addEventListener("submit", async (event) => {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Please enter a name between 1 and 18 characters.");
+    if (data.game === "ludo") {
+      saveStorage(sessionStorage, "ludo-club-seat", data);
+      location.replace(`/ludo?room=${encodeURIComponent(data.code)}`);
+      return;
+    }
     session = data;
     state = null;
     saveStorage(sessionStorage, SESSION_KEY, session);
@@ -176,6 +273,11 @@ function connect() {
       reconnectAttempts = 0;
       actionPending = false;
       clearTimeout(actionTimer);
+      if (manualSavePending && state.board_mode === "manual" && state.board.every((number, index) => number === manualBoard[index])) {
+        manualSavePending = false;
+        $("manual-dialog").close();
+        showToast("Your chosen numbers are saved. Press Ready when you're set.");
+      }
       render(previous);
       if (!wasConnected && previous) showToast("You're back. Your card was saved.");
       if (previous && previous.round === state.round && state.called.length > previous.called.length) {
@@ -186,6 +288,11 @@ function connect() {
       }
     } else if (message.type === "error") {
       actionPending = false;
+      if (manualSavePending) {
+        manualSavePending = false;
+        $("manual-error").textContent = message.message;
+        $("manual-error").hidden = false;
+      }
       clearTimeout(actionTimer);
       render();
       showToast(message.message);
@@ -203,6 +310,7 @@ function connect() {
     clearTimeout(actionTimer);
     connected = false;
     actionPending = false;
+    manualSavePending = false;
     if (event.code === 4001) {
       resetSession();
       showToast("Your seat is open in another tab. Continue playing there.");
@@ -251,6 +359,8 @@ function resetSession() {
   history.replaceState(null, "", "/");
   elements["leave-dialog"].close();
   elements["result-dialog"].close();
+  $("manual-dialog").close();
+  manualSavePending = false;
   setMode("create");
   render();
 }
@@ -268,6 +378,8 @@ function render(previous = null) {
   const complete = new Set(state?.completed_lines.flat() || []);
   const myTurn = connected && state?.phase === "playing" && !state.paused && state.turn_id === state.you;
   const canCall = myTurn && !actionPending;
+  if (state?.phase !== "waiting" || me?.ready) $("manual-dialog").close();
+  if ($("manual-dialog").open) renderManual();
 
   cells.forEach((cell, index) => {
     const number = board[index];
@@ -301,6 +413,7 @@ function render(previous = null) {
   $("opponent-score-name").textContent = opponent?.name || "Your future rival";
   updateCount("your-score-count", myLines);
   updateCount("opponent-score-count", opponentLines);
+  renderRecord();
   $("called-count").textContent = `${called.size} / 25`;
   $("last-number").textContent = last ?? "–";
   $("last-number").classList.toggle("has-number", last !== undefined);
@@ -322,7 +435,7 @@ function render(previous = null) {
     hint = "Your seat is saved for five minutes.";
   } else if (state?.phase === "waiting") {
     status = !opponent ? "A table for two. Invite your friend." : me?.ready ? `You're ready. Waiting for ${opponent.name}…` : "Like your card? Let your rival know you're ready.";
-    hint = me?.ready ? "Card locked in. Looking lucky." : "A fresh shuffle. A little more luck?";
+    hint = me?.ready ? "Card locked in. Looking lucky." : state.board_mode === "manual" ? "Your numbers, your arrangement." : "Keep it random or choose your numbers.";
   } else if (state?.phase === "playing") {
     status = state.paused ? "Game paused. Waiting for your rival to reconnect…" : myTurn ? "Your turn. Pick a number on your card." : `${opponent?.name || "Your rival"}'s turn. Your next move is coming.`;
     hint = `${myLines} of 5 lines complete · Every call marks both cards`;
@@ -334,6 +447,9 @@ function render(previous = null) {
   elements["board-hint"].textContent = hint;
   elements["shuffle-button"].hidden = !state || state.phase !== "waiting";
   elements["shuffle-button"].disabled = !connected || actionPending || me?.ready;
+  $("manual-button").hidden = !state || state.phase !== "waiting";
+  $("manual-button").disabled = !connected || actionPending || me?.ready;
+  $("manual-button").textContent = state?.board_mode === "manual" ? "Edit numbers" : "Choose numbers";
   document.title = !session ? "The Bingo Club — A game for two" : myTurn ? "Your turn! — The Bingo Club" : `${session.code} — The Bingo Club`;
 
   if (session) {
@@ -355,7 +471,7 @@ function render(previous = null) {
       elements["ready-note"].textContent = me?.rematch ? "Waiting for your rival to join the rematch." : opponent?.rematch ? "Your rival is ready for another round!" : "One more for the bragging rights?";
     } else {
       readyButton.textContent = !connected ? "Connecting…" : me?.ready ? "Ready ✓ · Undo" : "I'm ready ✓";
-      elements["ready-note"].textContent = me?.ready ? "The game starts when both players are ready." : "Shuffle your card, then make it official.";
+      elements["ready-note"].textContent = me?.ready ? "The game starts when both players are ready." : "Shuffle or choose your numbers, then press Ready.";
     }
     $("confirm-leave").disabled = !connected || actionPending;
   }
@@ -377,6 +493,36 @@ function updateProgress(id, count, label) {
   const element = $(id);
   Array.from(element.children).forEach((letter, index) => letter.classList.toggle("earned", index < count));
   element.setAttribute("aria-label", `${label}: ${count} of 5 lines`);
+}
+
+function renderRecord() {
+  $("room-record").hidden = !state;
+  if (!state) return;
+  const results = state.results || [];
+  const draws = state.draws || 0;
+  $("record-summary").textContent = `${results.length} completed round${results.length === 1 ? "" : "s"} · ${draws} draw${draws === 1 ? "" : "s"}`;
+  $("record-players").replaceChildren();
+  for (const record of state.standings || []) {
+    const row = document.createElement("tr");
+    const name = document.createElement("th");
+    name.scope = "row";
+    const active = state.players.some((player) => player.id === record.id);
+    name.textContent = `${record.name}${record.id === state.you ? " (you)" : active ? "" : " (left)"}`;
+    const wins = document.createElement("td");
+    wins.textContent = record.wins;
+    const ties = document.createElement("td");
+    ties.textContent = record.draws;
+    row.append(name, wins, ties);
+    $("record-players").append(row);
+  }
+  $("round-history").hidden = results.length === 0;
+  $("round-results").replaceChildren();
+  for (const result of results.slice(-5).reverse()) {
+    const item = document.createElement("li");
+    const winner = result.players.find((player) => player.id === result.winner_ids[0]);
+    item.textContent = `Round ${String(result.round).padStart(2, "0")} · ${result.winner_ids.length > 1 ? "Draw" : `${winner.name} won`} · ${result.numbers_called} calls`;
+    $("round-results").append(item);
+  }
 }
 
 function updateCount(id, count) {
@@ -419,6 +565,7 @@ function renderResult(me, opponent) {
   $("result-eyebrow").textContent = draw ? "GREAT MINDS. SAME BINGO." : won ? "A BEAUTIFUL LITTLE VICTORY" : "A RIVALRY WORTH REPEATING";
   $("result-title").textContent = draw ? "A perfect little tie." : won ? "Bingo, you did it!" : `${opponent?.name || "Your rival"} got Bingo!`;
   $("result-description").textContent = draw ? "You both reached five lines on the same call. Some rivalries are just that well matched." : won ? "Five lines and all the bragging rights. Give your rival a chance to win them back?" : "This round goes to your rival. The next lucky card could have your name on it.";
+  $("result-record").textContent = `Room wins: ${me.name} ${me.wins || 0} · ${opponent.name} ${opponent.wins || 0} · Draws ${state.draws || 0}`;
   $("result-stats").replaceChildren();
   for (const [number, label] of [[me?.lines || 0, "Your lines"], [opponent?.lines || 0, "Rival's lines"], [state.called.length, "Numbers called"]]) {
     const item = document.createElement("div");

@@ -21,6 +21,7 @@
   </header>
 
   <main class="page-shell">
+    <nav class="game-switch" aria-label="Choose a game"><a href="/" aria-current="page">Bingo <span>2 players</span></a><a href="/ludo">Ludo <span>2 or 4 players</span></a></nav>
     <section class="hero" aria-labelledby="hero-title">
       <div>
         <div class="eyebrow"><span class="tiny-dot"></span> THE TWO-PLAYER CLASSIC, BACK ONLINE</div>
@@ -66,7 +67,7 @@
           <div class="roster" id="roster"></div>
           <div class="room-notice" id="room-notice" role="status" hidden></div>
           <button class="button button-primary full-width" id="ready-button">I'm ready <span aria-hidden="true">✓</span></button>
-          <p class="ready-note" id="ready-note">Shuffle your card, then make it official.</p>
+          <p class="ready-note" id="ready-note">Shuffle or choose your numbers, then press Ready.</p>
           <button class="text-button leave-button" id="leave-button">Leave room <span aria-hidden="true">↗</span></button>
         </section>
 
@@ -78,7 +79,7 @@
         <div class="bingo-letters" id="bingo-letters" aria-label="0 of 5 lines completed"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>
         <div class="bingo-board" id="bingo-board" role="group" aria-label="Your Bingo card"></div>
         <div class="board-status" id="board-status" role="status" aria-live="polite"><span class="status-dot"></span><span id="board-status-text">Your next game starts here.</span></div>
-        <div class="board-bottom"><span id="board-hint">Create or join a room to get your card.</span><button id="shuffle-button" class="text-button" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h3c5 0 7 12 12 12h3m-4-4 4 4-4 4M3 18h3c2 0 4-3 5-5m2-3c2-3 3-4 5-4h3m-4-4 4 4-4 4"/></svg> Shuffle card</button></div>
+        <div class="board-bottom"><span id="board-hint">Create or join a room to get your card.</span><div class="board-actions"><button id="manual-button" class="text-button" hidden>Choose numbers</button><button id="shuffle-button" class="text-button" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h3c5 0 7 12 12 12h3m-4-4 4 4-4 4M3 18h3c2 0 4-3 5-5m2-3c2-3 3-4 5-4h3m-4-4 4 4-4 4"/></svg> Shuffle card</button></div></div>
       </section>
 
       <aside class="right-column">
@@ -88,6 +89,13 @@
           <div class="score-player"><div class="score-name"><span id="your-score-name">You</span><strong id="your-score-count">0<span>/5</span></strong></div><div class="mini-bingo" id="your-progress" aria-label="Your progress: 0 of 5"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div></div>
           <div class="score-player opponent"><div class="score-name"><span id="opponent-score-name">Your future rival</span><strong id="opponent-score-count">0<span>/5</span></strong></div><div class="mini-bingo" id="opponent-progress" aria-label="Opponent progress: 0 of 5"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div></div>
           <p class="score-footnote">Rows, columns & diagonals all count.</p>
+          <section class="room-record" id="room-record" aria-labelledby="room-record-title" hidden>
+            <h3 class="eyebrow muted" id="room-record-title">ROOM RECORD</h3>
+            <p class="record-summary" id="record-summary">0 completed rounds</p>
+            <table class="record-table"><thead><tr><th scope="col">Player</th><th scope="col">Wins</th><th scope="col">Draws</th></tr></thead><tbody id="record-players"></tbody></table>
+            <details class="round-history" id="round-history" hidden><summary>Recent rounds</summary><ol id="round-results"></ol></details>
+            <p class="record-note">Scores stay with this room through rematches.</p>
+          </section>
         </section>
         <section class="calls-panel" aria-labelledby="last-call-title">
           <div class="last-call"><div><h2 class="eyebrow" id="last-call-title">LAST NUMBER</h2><p id="last-caller">The suspense begins…</p></div><div class="number-ball" id="last-number">–</div></div>
@@ -103,8 +111,21 @@
   </main>
   <footer class="site-footer"><span>Less scrolling. More playing.</span><span>MADE FOR A LITTLE FRIENDLY COMPETITION <span aria-hidden="true">✳</span></span></footer>
 
-  <dialog id="rules-dialog" class="modal"><div class="modal-content"><button class="close-button" id="close-rules" aria-label="Close rules">×</button><span class="eyebrow muted">THE HOUSE RULES</span><h2>Five lines.<br>One glorious Bingo.</h2><ol class="rules-list"><li><strong>Bring a friend.</strong><p>Create a private room and share its link or six-character code. Each player gets a different shuffled 5 × 5 card with numbers 1–25.</p></li><li><strong>Make it official.</strong><p>Shuffle your card as much as you like, then press “I'm ready.” The game starts when both players are ready.</p></li><li><strong>Take your turn.</strong><p>Click any uncalled number on your card. It gets marked on both cards automatically. The room creator calls first; you alternate turns.</p></li><li><strong>Collect five lines.</strong><p>A full row, column, or diagonal earns a letter in B–I–N–G–O. Reach five lines to win. If both players reach five on the same call, it's a draw!</p></li></ol><div class="rules-tip">Lost connection? Reopen the same tab within five minutes to keep your seat. For a rematch, both players choose “Play again”; the starting player alternates.</div><button id="got-it" class="button button-primary full-width">Got it. Let's play <span aria-hidden="true">↗</span></button></div></dialog>
-  <dialog id="result-dialog" class="modal result-modal"><div class="modal-content"><div class="result-flower" aria-hidden="true">✳</div><span class="eyebrow muted" id="result-eyebrow">A BEAUTIFUL LITTLE VICTORY</span><h2 id="result-title">Bingo, you did it!</h2><p id="result-description"></p><div class="result-stats" id="result-stats"></div><button class="button button-primary full-width" id="rematch-button">Play again <span aria-hidden="true">↗</span></button><button class="text-button" id="view-board-button">Take a look at the card</button></div></dialog>
+  <dialog id="rules-dialog" class="modal"><div class="modal-content"><button class="close-button" id="close-rules" aria-label="Close rules">×</button><span class="eyebrow muted">THE HOUSE RULES</span><h2>Five lines.<br>One glorious Bingo.</h2><ol class="rules-list"><li><strong>Bring a friend.</strong><p>Create a private room and share its link or six-character code. Each player gets a 5 × 5 card with numbers 1–25.</p></li><li><strong>Make it official.</strong><p>Keep a random card, shuffle again, or use “Choose numbers” to place every number yourself and save your card. Then press “I'm ready.” The game starts when both players are ready.</p></li><li><strong>Take your turn.</strong><p>Click any uncalled number on your card. It gets marked on both cards automatically. The room creator calls first; you alternate turns.</p></li><li><strong>Collect five lines.</strong><p>A full row, column, or diagonal earns a letter in B–I–N–G–O. Reach five lines to win. If both players reach five on the same call, it's a draw!</p></li></ol><div class="rules-tip">Lost connection? Reopen the same tab within five minutes to keep your seat. For a rematch, both players choose “Play again”; the starting player alternates. The room record keeps everyone's wins and draws across rounds.</div><button id="got-it" class="button button-primary full-width">Got it. Let's play <span aria-hidden="true">↗</span></button></div></dialog>
+  <dialog id="manual-dialog" class="modal manual-modal" aria-labelledby="manual-title" aria-describedby="manual-instructions">
+    <div class="modal-content">
+      <button class="close-button" id="close-manual" aria-label="Close number setup">×</button>
+      <span class="eyebrow muted">YOUR CARD, YOUR CHOICE</span>
+      <h2 id="manual-title">Choose your numbers</h2>
+      <p class="secondary-text" id="manual-instructions">Pick a square, then a number below. Used numbers move or swap places. Fill all 25 squares to save.</p>
+      <div class="manual-grid" id="manual-grid" role="group" aria-label="Arrange your Bingo card"></div>
+      <div class="manual-toolbar"><span id="manual-count" role="status" aria-live="polite">0 / 25 placed</span><button class="text-button" id="clear-manual-cell">Clear square</button><button class="text-button" id="clear-manual">Start over</button></div>
+      <div class="manual-numbers" id="manual-numbers" role="group" aria-label="Choose a number from 1 to 25"></div>
+      <p class="form-error" id="manual-error" role="alert" hidden></p>
+      <div class="manual-actions"><button class="button button-outline" id="cancel-manual">Cancel</button><button class="button button-primary" id="save-manual" disabled>Save card</button></div>
+    </div>
+  </dialog>
+  <dialog id="result-dialog" class="modal result-modal"><div class="modal-content"><div class="result-flower" aria-hidden="true">✳</div><span class="eyebrow muted" id="result-eyebrow">A BEAUTIFUL LITTLE VICTORY</span><h2 id="result-title">Bingo, you did it!</h2><p id="result-description"></p><div class="result-stats" id="result-stats"></div><p class="result-record" id="result-record"></p><button class="button button-primary full-width" id="rematch-button">Play again <span aria-hidden="true">↗</span></button><button class="text-button" id="view-board-button">Take a look at the card</button></div></dialog>
   <dialog id="leave-dialog" class="modal"><div class="modal-content"><span class="eyebrow muted">CALLING IT A DAY?</span><h2>Leave this table?</h2><p class="secondary-text">Your current game will end and your seat will be released. Your friend can invite someone for a fresh game.</p><div class="leave-actions"><button class="button button-outline" id="stay-button">Keep playing</button><button class="button button-primary" id="confirm-leave">Leave room</button></div></div></dialog>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <div id="confetti" class="confetti" aria-hidden="true"></div>

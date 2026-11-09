@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#174b3c">
+  <meta name="description" content="Play Ludo with two or four friends in a private online room. Roll, race, capture, and bring your tokens home.">
+  <title>Ludo — The Bingo Club</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/ludo.css">
+  <script src="/static/ludo.js" defer></script>
+</head>
+<body class="ludo-page">
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="The Bingo Club home"><span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>the bingo club<span class="brand-dot">.</span></span></a>
+    <div class="header-note">MORE FRIENDS. MORE FRIENDLY RIVALRY.</div>
+    <button class="button button-outline button-small" id="rules-button">How to play</button>
+  </header>
+  <main class="page-shell">
+    <nav class="game-switch" aria-label="Choose a game"><a href="/">Bingo <span>2 players</span></a><a href="/ludo" aria-current="page">Ludo <span>2 or 4 players</span></a></nav>
+    <section class="ludo-hero"><div class="eyebrow"><span class="tiny-dot"></span> A CLASSIC FOR YOUR WHOLE TABLE</div><h1>Roll a little.<br> <em>Race your friends.</em></h1><p>Two players or four. One private room. Get every token home.</p></section>
+    <section class="ludo-layout" aria-label="Ludo game">
+      <aside class="ludo-lobby">
+        <section class="panel lobby-panel" id="entry-panel" aria-labelledby="entry-heading">
+          <div class="eyebrow muted">PULL UP A CHAIR</div><h2 id="entry-heading">Make room<br>for a good game.</h2>
+          <div class="entry-tabs" role="tablist" aria-label="Enter a Ludo game"><button id="create-tab" class="entry-tab active" role="tab" aria-selected="true" aria-controls="entry-form">Create room</button><button id="join-tab" class="entry-tab" role="tab" aria-selected="false" aria-controls="entry-form" tabindex="-1">Join room</button></div>
+          <form id="entry-form" role="tabpanel" aria-labelledby="create-tab">
+            <label for="player-name">YOUR NAME</label><input id="player-name" name="name" maxlength="18" autocomplete="nickname" placeholder="What should we call you?" required>
+            <fieldset class="seat-options" id="seat-options"><legend>HOW MANY PLAYERS?</legend><label><input type="radio" name="player-count" value="2" checked><span>2 players<small>Opposite colors</small></span></label><label><input type="radio" name="player-count" value="4"><span>4 players<small>The full table</small></span></label></fieldset>
+            <div id="room-code-field" hidden><label for="room-code">ROOM CODE</label><input id="room-code" name="room" placeholder="e.g. ABC234" maxlength="6" minlength="6" pattern="[A-Za-z2-9]{6}" autocomplete="off" autocapitalize="characters" spellcheck="false"></div>
+            <p class="form-error" id="form-error" role="alert" hidden></p><button class="button button-primary entry-submit" id="entry-submit" type="submit"><span>Create a room</span><span aria-hidden="true">↗</span></button>
+          </form><p class="privacy-note">A private room for your friends.</p>
+        </section>
+        <section class="panel room-panel" id="room-panel" aria-labelledby="room-heading" hidden>
+          <div class="section-label"><span class="eyebrow muted">YOUR LUDO TABLE</span><span class="round-label" id="round-label">ROUND 01</span></div><h2 id="room-heading">Room for two.</h2>
+          <div class="invite-block"><span class="eyebrow muted">INVITE CODE</span><strong id="invite-code">———</strong><button id="copy-code" class="text-button">Copy code</button></div>
+          <button id="copy-link" class="button button-outline full-width">Copy invite link ↗</button><p class="invite-hint" id="invite-hint"></p>
+          <div class="roster" id="roster"></div><p class="room-notice" id="room-notice" role="status" hidden></p>
+          <button class="button button-primary full-width" id="ready-button">I'm ready ✓</button><p class="ready-note" id="ready-note">The game starts when everyone is ready.</p><button class="text-button leave-button" id="leave-button">Leave room ↗</button>
+        </section>
+      </aside>
+      <section class="board-panel ludo-board-panel" aria-labelledby="board-title">
+        <div class="board-header"><div><div class="eyebrow muted" id="board-eyebrow">THE RACE HOME</div><h2 id="board-title">Your Ludo table</h2></div><span class="card-tag" id="color-label">2 OR 4 PLAYERS</span></div>
+        <div class="ludo-board" id="ludo-board" role="group" aria-label="Ludo board"></div>
+        <div class="board-status" id="board-status" role="status" aria-live="polite"><span class="status-dot"></span><span id="board-status-text">Create or join a room to play.</span></div>
+        <div class="ludo-controls"><div class="dice" id="dice" role="img" aria-label="No roll yet"><span>?</span></div><div class="roll-controls"><p id="roll-caption">A little luck goes a long way.</p><button class="button button-primary full-width" id="roll-button" disabled>Roll dice</button></div></div>
+        <div class="token-choices" id="token-choices" role="group" aria-label="Choose your token"></div>
+        <p class="ludo-action" id="last-action">Roll a six to bring a token onto the track.</p><p class="ludo-legend"><span>★ Safe squares</span><span>Four tokens home to win</span></p>
+      </section>
+      <aside class="ludo-side">
+        <section class="panel ludo-progress"><h2 class="eyebrow">THE RACE HOME</h2><p class="score-intro">Every token counts.</p><div id="player-progress"></div></section>
+        <section class="panel ludo-record" id="room-record" hidden><h2 class="eyebrow">ROOM RECORD</h2><p class="record-summary" id="record-summary">0 completed rounds</p><table class="record-table"><thead><tr><th scope="col">Player</th><th scope="col">Wins</th></tr></thead><tbody id="record-players"></tbody></table><details class="round-history" id="round-history" hidden><summary>Recent rounds</summary><ol id="round-results"></ol></details><p class="record-note">Wins stay with this room through rematches.</p></section>
+      </aside>
+    </section>
+  </main>
+  <footer class="site-footer"><span>A little luck. A lot of company.</span><span>BINGO & LUDO · PLAY TOGETHER</span></footer>
+  <dialog class="modal" id="rules-dialog" aria-labelledby="rules-title"><div class="modal-content"><button class="close-button" id="close-rules" aria-label="Close rules">×</button><span class="eyebrow muted">THE HOUSE RULES</span><h2 id="rules-title">Four tokens.<br>One race home.</h2><ol class="rules-list"><li><strong>Choose your table.</strong><p>Create a room for 2 or 4 players and invite your friends. Two-player games use red and yellow. Everyone must be online and ready to start.</p></li><li><strong>Roll and move.</strong><p>Roll a six to bring a token out of its yard. Click a highlighted token on the board or use the token buttons. Each roll moves one token.</p></li><li><strong>Catch your friends.</strong><p>Land on an opponent outside a starred safe square to send their token back to its yard. Tokens can share squares; there are no blockades in this version.</p></li><li><strong>Get home.</strong><p>After a circuit, your token follows its color's home lane. You need an exact roll to finish. The first player with all four tokens home wins.</p></li></ol><div class="rules-tip">A six, a capture, or reaching home earns another roll. Three consecutive sixes end your turn; the third six is discarded. If you have no legal move, the turn passes automatically (a six still earns another roll). A disconnected player pauses the game for up to five minutes. Everyone votes for a rematch.</div><button class="button button-primary full-width" id="got-it">Got it. Let's play ↗</button></div></dialog>
+  <dialog class="modal result-modal" id="result-dialog" aria-labelledby="result-title"><div class="modal-content"><div class="result-flower" aria-hidden="true">✳</div><span class="eyebrow muted">ALL THE WAY HOME</span><h2 id="result-title"></h2><p id="result-description"></p><p class="ludo-result-record" id="result-record"></p><button class="button button-primary full-width" id="rematch-button">Play again ↗</button><button class="text-button" id="view-board-button">View the board</button></div></dialog>
+  <dialog class="modal" id="leave-dialog" aria-labelledby="leave-title"><div class="modal-content"><span class="eyebrow muted">CALLING IT A DAY?</span><h2 id="leave-title">Leave this table?</h2><p class="secondary-text">Your seat will be released and the current round will end. The remaining players can invite someone for a fresh round.</p><div class="leave-actions"><button class="button button-outline" id="stay-button">Keep playing</button><button class="button button-primary" id="confirm-leave">Leave room</button></div></div></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div><noscript><div class="noscript-message">Please enable JavaScript to play Ludo with your friends.</div></noscript>
+</body>
+</html>
