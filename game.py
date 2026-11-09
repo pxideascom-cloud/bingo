@@ -29,6 +29,7 @@ class Player:
     id: str = field(default_factory=lambda: secrets.token_hex(8))
     token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     board: list[int] = field(default_factory=shuffled_board)
+    board_mode: str = "random"
     connected: bool = False
     ready: bool = False
     rematch: bool = False
@@ -42,6 +43,9 @@ class Room:
     phase: str = "waiting"
     called: list[int] = field(default_factory=list)
     history: list[dict] = field(default_factory=list)
+    standings: dict[str, dict] = field(default_factory=dict)
+    results: list[dict] = field(default_factory=list)
+    draws: int = 0
     turn_id: str | None = None
     winner_ids: list[str] = field(default_factory=list)
     round: int = 1
@@ -62,6 +66,7 @@ class Room:
             raise GameError("That name is already taken in this room. Try another.")
         player = Player(name=name)
         self.players.append(player)
+        self.standings[player.id] = {"id": player.id, "name": name, "wins": 0, "draws": 0}
         self.notice = ""
         self.touch()
         return player
@@ -110,6 +115,7 @@ class Room:
         self.notice = ""
         for player in self.players:
             player.board = shuffled_board()
+            player.board_mode = "random"
             player.ready = False
             player.rematch = False
 
@@ -119,6 +125,19 @@ class Room:
             if self.phase != "waiting" or player.ready:
                 raise GameError("You can shuffle before you are ready.")
             player.board = shuffled_board()
+            player.board_mode = "random"
+        elif action == "set_board":
+            if self.phase != "waiting" or player.ready:
+                raise GameError("You can choose your numbers before you are ready.")
+            board = message.get("board")
+            if (
+                not isinstance(board, list) or len(board) != 25
+                or any(type(number) is not int or not 1 <= number <= 25 for number in board)
+                or len(set(board)) != 25
+            ):
+                raise GameError("Your card must contain every whole number from 1 to 25 exactly once.")
+            player.board = board[:]
+            player.board_mode = "manual"
         elif action == "ready":
             if self.phase != "waiting":
                 raise GameError("The game has already started.")
@@ -157,6 +176,17 @@ class Room:
         if self.winner_ids:
             self.phase = "finished"
             self.turn_id = None
+            draw = len(self.winner_ids) > 1
+            if draw:
+                self.draws += 1
+            for winner_id in self.winner_ids:
+                self.standings[winner_id]["draws" if draw else "wins"] += 1
+            self.results.append({
+                "round": self.round,
+                "winner_ids": self.winner_ids[:],
+                "players": [{"id": p.id, "name": p.name} for p in self.players],
+                "numbers_called": len(self.called),
+            })
         else:
             self.turn_id = next(p.id for p in self.players if p.id != player.id)
 
@@ -169,12 +199,14 @@ class Room:
             "revision": self.revision,
             "you": viewer.id,
             "board": viewer.board[:],
+            "board_mode": viewer.board_mode,
             "completed_lines": self.completed_lines(viewer),
             "players": [
                 {
                     "id": p.id, "name": p.name, "connected": p.connected,
                     "ready": p.ready, "rematch": p.rematch,
                     "lines": len(self.completed_lines(p)),
+                    "wins": self.standings[p.id]["wins"],
                 }
                 for p in self.players
             ],
@@ -182,6 +214,13 @@ class Room:
             "history": self.history[:],
             "turn_id": self.turn_id,
             "winner_ids": self.winner_ids[:],
+            "standings": [record.copy() for record in self.standings.values()],
+            "draws": self.draws,
+            "results": [
+                {**result, "winner_ids": result["winner_ids"][:],
+                 "players": [p.copy() for p in result["players"]]}
+                for result in self.results
+            ],
             "paused": self.phase == "playing" and not all(p.connected for p in self.players),
             "notice": self.notice,
         }

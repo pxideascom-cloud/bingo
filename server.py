@@ -9,17 +9,19 @@ from pathlib import Path
 import secrets
 import time
 from urllib.parse import urlsplit
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from game import CODE_ALPHABET, GameError, Room
+from ludo import LudoRoom, board_layout
 
 
 BASE_DIR = Path(__file__).resolve().parent
-rooms: dict[str, Room] = {}
+rooms: dict[str, Room | LudoRoom] = {}
 sockets: dict[str, WebSocket] = {}
 room_locks: dict[str, asyncio.Lock] = {}
 request_times: dict[str, deque] = defaultdict(deque)
@@ -28,7 +30,7 @@ EMPTY_ROOM_SECONDS = 7200
 MAX_ROOMS = 2000
 
 
-async def broadcast(room: Room):
+async def broadcast(room: Room | LudoRoom):
     async def send(player):
         socket = sockets.get(player.id)
         if socket:
@@ -104,6 +106,17 @@ class SeatRequest(BaseModel):
         return name
 
 
+class CreateRoomRequest(SeatRequest):
+    game: Literal["bingo", "ludo"] = "bingo"
+    player_count: Literal[2, 4] = 2
+
+    @model_validator(mode="after")
+    def validate_player_count(self):
+        if self.game == "bingo" and self.player_count != 2:
+            raise ValueError("Bingo rooms have two players. Choose Ludo for four players.")
+        return self
+
+
 def check_origin(origin: str | None, host: str | None) -> bool:
     if not origin:
         return True  # Allows native clients and command-line health checks.
@@ -128,7 +141,9 @@ def limit_requests(request: Request):
 
 
 def seat_response(room, player):
-    return {"code": room.code, "player_id": player.id, "token": player.token}
+    return {"code": room.code, "player_id": player.id, "token": player.token,
+            "game": "ludo" if isinstance(room, LudoRoom) else "bingo",
+            "player_count": room.player_count if isinstance(room, LudoRoom) else 2}
 
 
 @app.get("/health")
@@ -136,15 +151,20 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/ludo/layout")
+async def ludo_layout():
+    return board_layout()
+
+
 @app.post("/api/rooms", status_code=201)
-async def create_room(body: SeatRequest, request: Request):
+async def create_room(body: CreateRoomRequest, request: Request):
     limit_requests(request)
     if len(rooms) >= MAX_ROOMS:
         raise HTTPException(503, "The club is busy. Please try again shortly.")
     code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(6))
     while code in rooms:
         code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(6))
-    room = Room(code=code)
+    room = LudoRoom(code=code, player_count=body.player_count) if body.game == "ludo" else Room(code=code)
     player = room.add_player(body.name)
     rooms[code] = room
     room_locks[code] = asyncio.Lock()
@@ -249,6 +269,11 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 @app.get("/")
 async def index():
     return FileResponse(BASE_DIR / "static" / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/ludo")
+async def ludo_index():
+    return FileResponse(BASE_DIR / "static" / "ludo.html", headers={"Cache-Control": "no-cache"})
 
 
 if __name__ == "__main__":
