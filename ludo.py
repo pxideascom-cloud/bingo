@@ -72,6 +72,7 @@ class LudoRoom:
     revision: int = 0
     notice: str = ""
     last_action: str = "Invite your friends and get ready."
+    two_player_pair: tuple[str, str] = ("red", "yellow")
     updated_at: float = field(default_factory=time.monotonic)
 
     def __post_init__(self):
@@ -80,7 +81,7 @@ class LudoRoom:
 
     @property
     def colors(self):
-        return ("red", "yellow") if self.player_count == 2 else COLORS
+        return self.two_player_pair if self.player_count == 2 else COLORS
 
     @property
     def paused(self):
@@ -90,18 +91,29 @@ class LudoRoom:
         self.revision += 1
         self.updated_at = time.monotonic()
 
-    def add_player(self, name: str) -> LudoPlayer:
+    def add_player(self, name: str, color: str | None = None) -> LudoPlayer:
         if len(self.players) >= self.player_count:
             raise GameError("This room is full. Create a new room for your game.")
         if self.phase != "waiting":
             raise GameError("This game has already started.")
         if any(p.name.casefold() == name.casefold() for p in self.players):
             raise GameError("That name is already taken in this room. Try another.")
-        color = next(color for color in self.colors if all(p.color != color for p in self.players))
-        player = LudoPlayer(name=name, color=color)
+        if color is not None:
+            if color not in COLORS:
+                raise GameError("Choose Red, Green, Yellow, or Blue.")
+            if not self.players and self.player_count == 2:
+                self.two_player_pair = ("green", "blue") if color in ("green", "blue") else ("red", "yellow")
+            if color not in self.colors:
+                raise GameError(f"This two-player table uses {self.colors[0].title()} and {self.colors[1].title()}.")
+            if any(p.color == color for p in self.players):
+                raise GameError(f"{color.title()} is already taken. Choose another color.")
+            chosen_color = color
+        else:
+            chosen_color = next(c for c in self.colors if all(p.color != c for p in self.players))
+        player = LudoPlayer(name=name, color=chosen_color)
         self.players.append(player)
         self.players.sort(key=lambda p: self.colors.index(p.color))
-        self.standings[player.id] = {"id": player.id, "name": name, "color": color, "wins": 0}
+        self.standings[player.id] = {"id": player.id, "name": name, "color": chosen_color, "wins": 0}
         self.notice = ""
         self.touch()
         return player
@@ -248,6 +260,23 @@ class LudoRoom:
                 raise GameError("Choose whether you are ready.")
             player.ready = message["ready"]
             self.maybe_start()
+        elif action == "color":
+            if self.phase != "waiting":
+                raise GameError("You can only change color before the game starts.")
+            color = message.get("color")
+            if color not in COLORS:
+                raise GameError("Choose Red, Green, Yellow, or Blue.")
+            if player.color == color:
+                return
+            if self.player_count == 2 and len(self.players) == 1:
+                self.two_player_pair = ("green", "blue") if color in ("green", "blue") else ("red", "yellow")
+            if color not in self.colors:
+                raise GameError(f"This two-player table uses {self.colors[0].title()} and {self.colors[1].title()}.")
+            if any(p.id != player.id and p.color == color for p in self.players):
+                raise GameError(f"{color.title()} is already taken. Choose another color.")
+            player.color = color
+            self.standings[player.id]["color"] = color
+            self.players.sort(key=lambda p: self.colors.index(p.color))
         elif action == "roll":
             self.roll(player)
         elif action == "move":
@@ -266,7 +295,7 @@ class LudoRoom:
     def state_for(self, viewer: LudoPlayer) -> dict:
         return {
             "type": "state", "game": "ludo", "code": self.code,
-            "player_count": self.player_count, "phase": self.phase,
+            "player_count": self.player_count, "colors": list(self.colors), "phase": self.phase,
             "round": self.round, "revision": self.revision, "you": viewer.id,
             "players": [{"id": p.id, "name": p.name, "color": p.color,
                          "connected": p.connected, "ready": p.ready, "rematch": p.rematch,

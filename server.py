@@ -94,6 +94,7 @@ async def response_headers(request: Request, call_next):
 
 class SeatRequest(BaseModel):
     name: str = Field(min_length=1, max_length=18)
+    color: Literal["red", "green", "yellow", "blue"] | None = None
 
     @field_validator("name", mode="before")
     @classmethod
@@ -165,7 +166,7 @@ async def create_room(body: CreateRoomRequest, request: Request):
     while code in rooms:
         code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(6))
     room = LudoRoom(code=code, player_count=body.player_count) if body.game == "ludo" else Room(code=code)
-    player = room.add_player(body.name)
+    player = room.add_player(body.name, color=body.color) if isinstance(room, LudoRoom) else room.add_player(body.name)
     rooms[code] = room
     room_locks[code] = asyncio.Lock()
     return seat_response(room, player)
@@ -180,7 +181,7 @@ async def join_room(code: str, body: SeatRequest, request: Request):
         raise HTTPException(404, "Room not found. Double-check the code or create a new room.")
     async with room_locks[code]:
         try:
-            player = room.add_player(body.name)
+            player = room.add_player(body.name, color=body.color) if isinstance(room, LudoRoom) else room.add_player(body.name)
         except GameError as error:
             raise HTTPException(409, str(error)) from error
         await broadcast(room)
