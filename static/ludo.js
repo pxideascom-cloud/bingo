@@ -2,7 +2,22 @@
 
 const $ = (id) => document.getElementById(id);
 const SEAT_KEY = "ludo-club-seat";
+const SOUND_KEY = "ludo-club-sound";
 const COLORS = ["red", "green", "yellow", "blue"];
+const START_ARROWS = { red: "→", green: "↓", yellow: "←", blue: "↑" };
+const VISUAL_YARDS = {
+  red: [[1.963, 1.963], [1.963, 4.037], [4.037, 1.963], [4.037, 4.037]],
+  green: [[1.963, 10.963], [1.963, 13.037], [4.037, 10.963], [4.037, 13.037]],
+  yellow: [[10.963, 10.963], [10.963, 13.037], [13.037, 10.963], [13.037, 13.037]],
+  blue: [[10.963, 1.963], [10.963, 4.037], [13.037, 1.963], [13.037, 4.037]],
+};
+const HOME_ENTRY_CELLS = {
+  "7,0": { color: "red", arrow: "→" },
+  "0,7": { color: "green", arrow: "↓" },
+  "7,14": { color: "yellow", arrow: "←" },
+  "14,7": { color: "blue", arrow: "↑" },
+};
+
 let ludoSeat = readStorage(sessionStorage, SEAT_KEY, null);
 let ludoState = null;
 let layout = null;
@@ -14,10 +29,20 @@ let reconnectTimer = null;
 let heartbeatTimer = null;
 let actionTimer = null;
 let toastTimer = null;
+let calloutTimer = null;
+let diceAnimTimer = null;
 let reconnectAttempts = 0;
 let lastPong = 0;
 let resultShown = "";
+let soundEnabled = readStorage(localStorage, SOUND_KEY, true);
+let audioCtx = null;
+
 const boardTokens = new Map();
+const boardSquares = new Map();
+const prevProgress = new Map();
+const activeHopTimers = new Map();
+
+const prefersReducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function readStorage(storage, key, fallback) {
   try { return JSON.parse(storage.getItem(key)) ?? fallback; } catch { return fallback; }
@@ -25,6 +50,146 @@ function readStorage(storage, key, fallback) {
 
 function saveStorage(storage, key, value) {
   try { value === null ? storage.removeItem(key) : storage.setItem(key, JSON.stringify(value)); } catch { /* The current page still works. */ }
+}
+
+/* ===== WEB AUDIO SYNTHESIZER (LUDO KING STYLE, ZERO EXTERNAL ASSETS) ===== */
+function ensureAudio() {
+  if (!soundEnabled) return null;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!audioCtx) audioCtx = new AudioContextClass();
+  if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+  return audioCtx;
+}
+
+function tone(freq, startOffset, duration, type = "sine", volume = 0.12, endFreq = null) {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const now = ctx.currentTime + startOffset;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, now);
+  if (endFreq !== null) osc.frequency.exponentialRampToValueAtTime(Math.max(40, endFreq), now + duration);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.linearRampToValueAtTime(volume, now + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + duration + 0.02);
+}
+
+const LudoAudio = {
+  click() {
+    tone(520, 0, 0.05, "triangle", 0.06, 660);
+  },
+  diceRoll() {
+    const clicks = [0, 0.055, 0.115, 0.18, 0.255, 0.34];
+    clicks.forEach((offset, i) => {
+      tone(210 + (i % 3) * 65 + Math.random() * 40, offset, 0.045, "triangle", 0.08, 130);
+    });
+    tone(155, 0.39, 0.09, "sine", 0.11, 95);
+  },
+  six() {
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, i * 0.055, 0.18, "triangle", 0.11));
+  },
+  hop(step = 0) {
+    tone(360 + Math.min(step, 6) * 32, 0, 0.065, "sine", 0.095, 480 + Math.min(step, 6) * 32);
+  },
+  exitYard() {
+    tone(392, 0, 0.11, "triangle", 0.11, 523.25);
+    tone(523.25, 0.08, 0.16, "triangle", 0.12, 659.25);
+  },
+  safeSquare() {
+    tone(880, 0, 0.14, "sine", 0.08);
+    tone(1318.5, 0.07, 0.22, "sine", 0.07);
+  },
+  capture() {
+    tone(620, 0, 0.12, "sawtooth", 0.08, 220);
+    tone(440, 0.1, 0.16, "sawtooth", 0.08, 140);
+    tone(784, 0.22, 0.22, "triangle", 0.11, 1046.5);
+  },
+  home() {
+    [523.25, 659.25, 783.99, 987.77, 1046.5].forEach((f, i) => tone(f, i * 0.07, 0.24, "triangle", 0.12));
+  },
+  threeSixes() {
+    tone(360, 0, 0.14, "sawtooth", 0.07, 300);
+    tone(290, 0.15, 0.16, "sawtooth", 0.07, 220);
+    tone(210, 0.32, 0.28, "sawtooth", 0.07, 140);
+  },
+  yourTurn() {
+    tone(587.33, 0, 0.1, "sine", 0.06);
+    tone(880, 0.09, 0.14, "sine", 0.065);
+  },
+  win() {
+    const notes = [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5, 1318.5];
+    const times = [0, 0.1, 0.2, 0.32, 0.48, 0.6, 0.75];
+    notes.forEach((f, i) => tone(f, times[i], i === notes.length - 1 ? 0.55 : 0.18, "triangle", 0.13));
+  },
+};
+
+function updateSoundButton() {
+  const btn = $("sound-toggle");
+  if (!btn) return;
+  btn.setAttribute("aria-pressed", String(soundEnabled));
+  btn.querySelector(".sound-icon").textContent = soundEnabled ? "🔊" : "🔇";
+  $("sound-toggle-label").textContent = soundEnabled ? "Sound On" : "Sound Off";
+}
+
+$("sound-toggle")?.addEventListener("click", () => {
+  soundEnabled = !soundEnabled;
+  saveStorage(localStorage, SOUND_KEY, soundEnabled);
+  updateSoundButton();
+  if (soundEnabled) LudoAudio.click();
+});
+updateSoundButton();
+
+/* Unlock WebAudio on first user gesture */
+window.addEventListener("pointerdown", () => { if (soundEnabled && !audioCtx) ensureAudio(); }, { once: true });
+
+/* ===== CALLOUTS, FX & CONFETTI ===== */
+function showCallout(text, variant = "") {
+  if (prefersReducedMotion()) return;
+  const el = $("board-callout");
+  if (!el) return;
+  clearTimeout(calloutTimer);
+  el.textContent = text;
+  el.className = `board-callout${variant ? ` ${variant}` : ""}`;
+  el.hidden = false;
+  // Restart animation cleanly
+  void el.offsetWidth;
+  calloutTimer = setTimeout(() => { el.hidden = true; }, 1350);
+}
+
+function spawnBoardRing(cell, variant = "") {
+  if (prefersReducedMotion()) return;
+  const layer = $("board-fx");
+  if (!layer || !cell) return;
+  const ring = document.createElement("div");
+  ring.className = `fx-ring${variant ? ` ${variant}` : ""}`;
+  ring.style.left = `${(cell[1] + 0.5) / 15 * 100}%`;
+  ring.style.top = `${(cell[0] + 0.5) / 15 * 100}%`;
+  layer.append(ring);
+  setTimeout(() => ring.remove(), 600);
+}
+
+function launchConfetti() {
+  if (prefersReducedMotion()) return;
+  const container = $("confetti");
+  if (!container) return;
+  container.replaceChildren();
+  const palette = ["#e52521", "#00a844", "#f7c200", "#1677ff", "#ffd44d", "#ffffff"];
+  for (let i = 0; i < 64; i++) {
+    const piece = document.createElement("span");
+    piece.className = "ludo-confetti-piece";
+    piece.style.left = `${Math.random() * 100}%`;
+    piece.style.background = palette[i % palette.length];
+    piece.style.animationDelay = `${Math.random() * 0.9}s`;
+    piece.style.animationDuration = `${2.2 + Math.random() * 1.4}s`;
+    container.append(piece);
+  }
+  setTimeout(() => container.replaceChildren(), 4200);
 }
 
 function toast(message) {
@@ -87,6 +252,7 @@ $("entry-form").addEventListener("submit", async (event) => {
     }
     ludoSeat = seat;
     ludoState = null;
+    prevProgress.clear();
     saveStorage(sessionStorage, SEAT_KEY, seat);
     history.replaceState(null, "", `/ludo?room=${encodeURIComponent(seat.code)}`);
     connect();
@@ -100,20 +266,35 @@ $("entry-form").addEventListener("submit", async (event) => {
 });
 $("player-name").addEventListener("input", () => $("player-name").setCustomValidity(""));
 
+/* ===== BOARD CONSTRUCTION ===== */
 function buildBoard(boardLayout) {
   if (layout) return;
   layout = boardLayout;
   const board = $("ludo-board");
   board.replaceChildren();
+  boardSquares.clear();
+
   for (const color of COLORS) {
     const yard = document.createElement("div");
     yard.className = `ludo-yard ${color}`;
     yard.dataset.color = color;
     yard.setAttribute("aria-hidden", "true");
+    const pad = document.createElement("div");
+    pad.className = "yard-pad";
+    for (let i = 0; i < 4; i++) {
+      const spot = document.createElement("span");
+      spot.className = "yard-spot";
+      pad.append(spot);
+    }
+    const nameBadge = document.createElement("span");
+    nameBadge.className = "yard-name";
+    yard.append(pad, nameBadge);
     board.append(yard);
   }
+
   const track = new Map(layout.track.map((cell, index) => [cell.join(","), index]));
   const home = new Map(COLORS.flatMap((color) => layout.home_lanes[color].slice(0, 5).map((cell) => [cell.join(","), color])));
+
   for (let row = 0; row < 15; row++) {
     for (let col = 0; col < 15; col++) {
       const square = document.createElement("div");
@@ -125,36 +306,137 @@ function buildBoard(boardLayout) {
       const trackIndex = track.get(key);
       if (trackIndex !== undefined) {
         square.classList.add("track");
-        if (layout.safe_squares.includes(trackIndex)) { square.classList.add("safe"); square.textContent = "★"; }
         const startColor = COLORS.find((color) => layout.starts[color] === trackIndex);
-        if (startColor) square.classList.add(startColor);
+        if (startColor) {
+          square.classList.add(startColor, "start-square");
+          square.textContent = START_ARROWS[startColor];
+        } else if (layout.safe_squares.includes(trackIndex)) {
+          square.classList.add("safe");
+          square.textContent = "★";
+        } else if (HOME_ENTRY_CELLS[key]) {
+          square.classList.add("home-entry", `home-entry-${HOME_ENTRY_CELLS[key].color}`);
+          square.dataset.arrow = HOME_ENTRY_CELLS[key].arrow;
+        }
       }
       if (home.has(key)) square.classList.add(home.get(key));
       board.append(square);
+      boardSquares.set(key, square);
     }
   }
+
   const center = document.createElement("div");
   center.className = "ludo-center";
   center.setAttribute("aria-hidden", "true");
-  const label = document.createElement("span");
-  label.textContent = "HOME";
-  center.append(label);
+  const crown = document.createElement("span");
+  crown.textContent = "♛";
+  center.append(crown);
   board.append(center);
+}
+
+function cellForProgress(color, tokenIndex, progress) {
+  if (!layout) return [7, 7];
+  if (progress < 0) return VISUAL_YARDS[color][tokenIndex];
+  if (progress <= 50) return layout.track[(layout.starts[color] + progress) % layout.track.length];
+  return layout.home_lanes[color][Math.min(progress - 51, 5)];
+}
+
+function clearTargetHighlight() {
+  document.querySelectorAll(".ludo-square.target-square").forEach((sq) => sq.classList.remove("target-square"));
+  document.querySelectorAll(".ludo-token.choice-hover").forEach((t) => t.classList.remove("choice-hover"));
+}
+
+function highlightDestination(player, token) {
+  clearTargetHighlight();
+  if (!ludoState || !ludoState.dice || !ludoState.legal_moves.includes(token.index)) return;
+  const nextProgress = token.progress === -1 ? 0 : token.progress + ludoState.dice;
+  const dest = cellForProgress(player.color, token.index, nextProgress);
+  const sq = boardSquares.get(dest.join(","));
+  if (sq) sq.classList.add("target-square");
+  const tokenBtn = boardTokens.get(`${player.id}-${token.index}`);
+  if (tokenBtn) tokenBtn.classList.add("choice-hover");
 }
 
 function tokenStatus(progress) {
   return progress === -1 ? "In yard" : progress === 56 ? "Home" : progress >= 51 ? "Home lane" : "On track";
 }
 
+function cancelHop(key) {
+  const timers = activeHopTimers.get(key);
+  if (timers) {
+    timers.forEach(clearTimeout);
+    activeHopTimers.delete(key);
+  }
+}
+
+function positionToken(button, cell, offsetX = 0, offsetY = 0, size = "5.4%", exact = false) {
+  const col = exact ? cell[1] : cell[1] + 0.5;
+  const row = exact ? cell[0] : cell[0] + 0.5;
+  button.style.left = `${(col + offsetX) / 15 * 100}%`;
+  button.style.top = `${(row + offsetY) / 15 * 100}%`;
+  button.style.width = button.style.height = size;
+}
+
+function animateTokenHop(button, key, player, token, fromProgress, toProgress, finalOffsetX, finalOffsetY, finalSize) {
+  cancelHop(key);
+  const timers = [];
+  const steps = toProgress - fromProgress;
+  const stepMs = 115;
+
+  for (let s = 1; s <= steps; s++) {
+    const p = fromProgress + s;
+    const isLast = s === steps;
+    const cell = cellForProgress(player.color, token.index, p);
+    const t = setTimeout(() => {
+      button.classList.add("hopping");
+      positionToken(button, cell, isLast ? finalOffsetX : 0, isLast ? finalOffsetY : 0, isLast ? finalSize : "5.4%");
+      LudoAudio.hop(s - 1);
+      const t2 = setTimeout(() => button.classList.remove("hopping"), 80);
+      timers.push(t2);
+      if (isLast) {
+        activeHopTimers.delete(key);
+        if (toProgress === 56) {
+          LudoAudio.home();
+          spawnBoardRing([7, 7], "home");
+          showCallout("HOME! ♛");
+        } else if (toProgress <= 50) {
+          const trackIdx = (layout.starts[player.color] + toProgress) % layout.track.length;
+          if (layout.safe_squares.includes(trackIdx)) {
+            LudoAudio.safeSquare();
+          }
+        }
+      }
+    }, (s - 1) * stepMs);
+    timers.push(t);
+  }
+  activeHopTimers.set(key, timers);
+}
+
 function renderTokens() {
   if (!layout) return;
   const count = ludoState?.player_count || Number(document.querySelector("input[name=player-count]:checked").value);
   const activeColors = count === 2 ? ["red", "yellow"] : COLORS;
-  document.querySelectorAll(".ludo-yard").forEach((yard) => yard.classList.toggle("inactive", !activeColors.includes(yard.dataset.color)));
-  const players = ludoState?.players || COLORS.map((color) => ({ id: `preview-${color}`, name: color, color,
-    tokens: layout.yards[color].map((cell, index) => ({ cell, index, progress: -1 })) }));
+  const currentTurnPlayer = ludoState?.phase === "playing" && !ludoState.paused
+    ? ludoState.players.find((p) => p.id === ludoState.turn_id)
+    : null;
+
+  document.querySelectorAll(".ludo-yard").forEach((yard) => {
+    const color = yard.dataset.color;
+    yard.classList.toggle("inactive", !activeColors.includes(color));
+    yard.classList.toggle("active-turn", currentTurnPlayer?.color === color);
+    const player = ludoState?.players.find((p) => p.color === color);
+    const badge = yard.querySelector(".yard-name");
+    if (badge) badge.textContent = player ? player.name : "";
+  });
+
+  const players = ludoState?.players || COLORS.map((color) => ({
+    id: `preview-${color}`, name: color, color,
+    tokens: layout.yards[color].map((cell, index) => ({ cell, index, progress: -1 })),
+  }));
+
   const liveKeys = new Set();
   const groups = new Map();
+  let capturedCell = null;
+
   for (const player of players) {
     for (const token of player.tokens) {
       const key = `${player.id}-${token.index}`;
@@ -164,13 +446,19 @@ function renderTokens() {
       groups.get(groupKey).push({ player, token, key });
     }
   }
+
+  const reduced = prefersReducedMotion();
+
   for (const group of groups.values()) {
     group.forEach(({ player, token, key }, slot) => {
       let button = boardTokens.get(key);
       if (!button) {
         button = document.createElement("button");
         button.type = "button";
-        button.addEventListener("click", () => sendAction({ type: "move", token_index: token.index }));
+        button.addEventListener("click", () => {
+          clearTargetHighlight();
+          sendAction({ type: "move", token_index: token.index });
+        });
         boardTokens.set(key, button);
         $("ludo-board").append(button);
       }
@@ -182,26 +470,72 @@ function renderTokens() {
       button.dataset.tokenIndex = token.index;
       button.dataset.progress = token.progress;
       button.setAttribute("aria-label", `${player.name}'s ${player.color} token ${token.index + 1}: ${tokenStatus(token.progress)}${movable ? ", move this token" : ""}`);
+
+      button.onmouseenter = movable ? () => highlightDestination(player, token) : null;
+      button.onmouseleave = movable ? clearTargetHighlight : null;
+
       const columns = Math.ceil(Math.sqrt(group.length));
       const rows = Math.ceil(group.length / columns);
-      const offsetX = (slot % columns - (columns - 1) / 2) * 0.32;
-      const offsetY = (Math.floor(slot / columns) - (rows - 1) / 2) * 0.32;
-      button.style.left = `${(token.cell[1] + 0.5 + offsetX) / 15 * 100}%`;
-      button.style.top = `${(token.cell[0] + 0.5 + offsetY) / 15 * 100}%`;
-      button.style.width = button.style.height = group.length > 4 ? "3.6%" : "5.1%";
+      const offsetX = (slot % columns - (columns - 1) / 2) * 0.30;
+      const offsetY = (Math.floor(slot / columns) - (rows - 1) / 2) * 0.30;
+      const size = group.length > 4 ? "3.7%" : group.length > 1 ? "4.6%" : "5.4%";
+
+      const inYard = token.progress < 0;
+      const displayCell = inYard ? VISUAL_YARDS[player.color][token.index] : token.cell;
+      const oldProg = prevProgress.get(key);
+      if (ludoState && !reduced && oldProg !== undefined && oldProg !== token.progress) {
+        if (oldProg === -1 && token.progress === 0) {
+          cancelHop(key);
+          positionToken(button, displayCell, offsetX, offsetY, size, false);
+          button.classList.add("spawning");
+          setTimeout(() => button.classList.remove("spawning"), 380);
+          LudoAudio.exitYard();
+        } else if (oldProg >= 0 && token.progress > oldProg && token.progress - oldProg <= 6) {
+          animateTokenHop(button, key, player, token, oldProg, token.progress, offsetX, offsetY, size);
+        } else if (oldProg >= 0 && token.progress === -1) {
+          cancelHop(key);
+          capturedCell = cellForProgress(player.color, token.index, oldProg);
+          positionToken(button, displayCell, 0, 0, size, true);
+        } else {
+          cancelHop(key);
+          positionToken(button, displayCell, inYard ? 0 : offsetX, inYard ? 0 : offsetY, size, inYard);
+        }
+      } else if (!activeHopTimers.has(key)) {
+        positionToken(button, displayCell, inYard ? 0 : offsetX, inYard ? 0 : offsetY, size, inYard);
+      }
+
+      if (ludoState) prevProgress.set(key, token.progress);
     });
   }
+
+  if (capturedCell && !reduced) {
+    LudoAudio.capture();
+    spawnBoardRing(capturedCell, "capture");
+    showCallout("CAPTURED! 💥", "capture");
+  }
+
   for (const [key, button] of boardTokens) {
-    if (!liveKeys.has(key)) { button.remove(); boardTokens.delete(key); }
+    if (!liveKeys.has(key)) {
+      cancelHop(key);
+      button.remove();
+      boardTokens.delete(key);
+      prevProgress.delete(key);
+    }
   }
 }
 
-function renderDice(value) {
+/* ===== 3D DICE RENDERING & ROLL ANIMATION ===== */
+function drawDiceFace(value) {
   const dice = $("dice");
   dice.replaceChildren();
   dice.dataset.value = value ?? "";
   dice.setAttribute("aria-label", value ? `Dice: ${value}` : "No roll yet");
-  if (!value) { const span = document.createElement("span"); span.textContent = "?"; dice.append(span); return; }
+  if (!value) {
+    const span = document.createElement("span");
+    span.textContent = "?";
+    dice.append(span);
+    return;
+  }
   const pips = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] }[value];
   for (const index of pips) {
     const pip = document.createElement("i");
@@ -209,6 +543,42 @@ function renderDice(value) {
     pip.style.gridColumn = index % 3 + 1;
     dice.append(pip);
   }
+}
+
+function animateDiceRoll(finalValue, isThreeSixes = false) {
+  const dice = $("dice");
+  clearInterval(diceAnimTimer);
+  dice.classList.remove("rolling", "settled", "rolled-six");
+
+  if (!finalValue || prefersReducedMotion()) {
+    drawDiceFace(finalValue);
+    if (finalValue === 6 && !isThreeSixes) dice.classList.add("rolled-six");
+    return;
+  }
+
+  LudoAudio.diceRoll();
+  dice.classList.add("rolling");
+  let ticks = 0;
+  diceAnimTimer = setInterval(() => {
+    ticks += 1;
+    drawDiceFace(Math.floor(Math.random() * 6) + 1);
+    if (ticks >= 7) {
+      clearInterval(diceAnimTimer);
+      diceAnimTimer = null;
+      dice.classList.remove("rolling");
+      drawDiceFace(finalValue);
+      dice.classList.add("settled");
+      setTimeout(() => dice.classList.remove("settled"), 300);
+      if (isThreeSixes) {
+        LudoAudio.threeSixes();
+        showCallout("3 SIXES! TURN LOST", "bust");
+      } else if (finalValue === 6) {
+        dice.classList.add("rolled-six");
+        LudoAudio.six();
+        showCallout("SIX! ROLL AGAIN");
+      }
+    }
+  }, 55);
 }
 
 function renderPlayers() {
@@ -280,7 +650,7 @@ function renderRecord() {
   }
 }
 
-function render() {
+function render(justRolled = false, isThreeSixes = false) {
   document.body.classList.toggle("in-room", Boolean(ludoSeat));
   document.body.classList.toggle("is-playing", ludoState?.phase === "playing" || ludoState?.phase === "finished");
   $("entry-panel").hidden = Boolean(ludoSeat);
@@ -288,42 +658,79 @@ function render() {
   const me = ludoState?.players.find((p) => p.id === ludoState.you);
   const current = ludoState?.players.find((p) => p.id === ludoState.turn_id);
   const myTurn = connected && ludoState?.phase === "playing" && !ludoState.paused && current?.id === me?.id;
+  const canRoll = myTurn && !pending && ludoState.dice === null;
+
   $("ludo-board").dataset.phase = ludoState?.phase || "preview";
   $("ludo-board").dataset.revision = ludoState?.revision ?? "";
   $("board-status").classList.toggle("your-turn", Boolean(myTurn));
   $("board-status").classList.toggle("paused", Boolean(ludoSeat && (!connected || ludoState?.paused)));
   $("color-label").textContent = me ? `YOU ARE ${me.color.toUpperCase()}` : "2 OR 4 PLAYERS";
   $("board-eyebrow").textContent = ludoState ? `ROUND ${String(ludoState.round).padStart(2, "0")} · THE RACE HOME` : "THE RACE HOME";
+
+  const tray = $("dice-tray");
+  if (tray) {
+    tray.className = `dice-tray${current && ludoState?.phase === "playing" ? ` turn-${current.color}` : ""}`;
+  }
+  $("dice").classList.toggle("roll-ready", canRoll);
+  $("dice").disabled = !canRoll;
+
+  const streakBadge = $("streak-badge");
+  if (streakBadge) {
+    const streak = ludoState?.six_streak || 0;
+    streakBadge.hidden = streak <= 0;
+    streakBadge.textContent = `6 × ${streak}`;
+  }
+
   let status = "Create or join a room to play.";
   if (ludoSeat && !connected) status = ludoState ? "Connection lost. Reconnecting to your table…" : "Connecting to your table…";
   else if (ludoState?.phase === "waiting") status = `${ludoState.players.length} / ${ludoState.player_count} players here. ${me?.ready ? "You're ready!" : "Get everyone ready to start."}`;
   else if (ludoState?.phase === "playing") status = ludoState.paused ? "Game paused. Waiting for a player to reconnect…" : myTurn ? ludoState.dice ? "Your turn. Choose a highlighted token." : "Your turn. Roll the dice!" : `${current.name}'s turn. Watch the race.`;
   else if (ludoState?.phase === "finished") status = `${ludoState.players.find((p) => ludoState.winner_ids.includes(p.id)).name} brought every token home!`;
   $("board-status-text").textContent = status;
-  $("roll-button").disabled = !myTurn || pending || ludoState.dice !== null;
+
+  $("roll-button").disabled = !canRoll;
   $("roll-button").textContent = myTurn && ludoState.dice !== null ? "Choose a token" : "Roll dice";
+
   const lastRoller = ludoState?.players.find((p) => p.id === ludoState.last_roll_player_id);
   $("roll-caption").textContent = lastRoller ? `${lastRoller.id === me?.id ? "You" : lastRoller.name} rolled ${ludoState.last_roll}` : "A little luck goes a long way.";
   $("last-action").textContent = ludoState?.last_action || "Roll a six to bring a token onto the track.";
-  renderDice(ludoState?.last_roll);
+
+  if (justRolled) {
+    animateDiceRoll(ludoState?.last_roll, isThreeSixes);
+  } else if (!diceAnimTimer) {
+    drawDiceFace(ludoState?.last_roll);
+    $("dice").classList.toggle("rolled-six", ludoState?.last_roll === 6 && ludoState?.dice === 6);
+  }
+
+  clearTargetHighlight();
   renderTokens();
   renderPlayers();
   renderRecord();
+
   $("token-choices").replaceChildren();
   if (me) {
     for (const token of me.tokens) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "token-choice";
-      button.disabled = !myTurn || pending || !ludoState.legal_moves.includes(token.index);
+      const movable = myTurn && !pending && ludoState.legal_moves.includes(token.index);
+      button.disabled = !movable;
       button.append(document.createTextNode(`Token ${token.index + 1}`));
       const label = document.createElement("small");
       label.textContent = tokenStatus(token.progress);
       button.append(label);
-      button.addEventListener("click", () => sendAction({ type: "move", token_index: token.index }));
+      if (movable) {
+        button.addEventListener("mouseenter", () => highlightDestination(me, token));
+        button.addEventListener("mouseleave", clearTargetHighlight);
+      }
+      button.addEventListener("click", () => {
+        clearTargetHighlight();
+        sendAction({ type: "move", token_index: token.index });
+      });
       $("token-choices").append(button);
     }
   }
+
   if (ludoSeat) {
     const count = ludoState?.player_count || ludoSeat.player_count;
     $("room-heading").textContent = count === 4 ? "Room for four." : "Room for two.";
@@ -347,6 +754,7 @@ function render() {
     }
     $("confirm-leave").disabled = !connected || pending;
   }
+
   if (ludoState?.phase === "finished") {
     const winner = ludoState.players.find((p) => ludoState.winner_ids.includes(p.id));
     $("result-title").textContent = winner.id === me.id ? "All the way home!" : `${winner.name} wins!`;
@@ -355,8 +763,16 @@ function render() {
     $("rematch-button").disabled = !connected || pending || me.rematch;
     $("rematch-button").textContent = me.rematch ? `Waiting for players… ${ludoState.players.filter((p) => p.rematch).length}/${ludoState.player_count}` : "Play again ↗";
     const key = `${ludoState.code}-${ludoState.round}`;
-    if (resultShown !== key) { resultShown = key; $("result-dialog").showModal(); }
-  } else $("result-dialog").close();
+    if (resultShown !== key) {
+      resultShown = key;
+      LudoAudio.win();
+      launchConfetti();
+      $("result-dialog").showModal();
+    }
+  } else {
+    $("result-dialog").close();
+  }
+
   document.title = myTurn ? "Your turn! — Ludo" : ludoSeat ? `${ludoSeat.code} — Ludo` : "Ludo — The Bingo Club";
 }
 
@@ -394,8 +810,30 @@ function connect() {
       reconnectAttempts = 0;
       clearTimeout(actionTimer);
       buildBoard(message.layout);
-      render();
-      if (previous?.phase === "waiting" && message.phase === "playing" && matchMedia("(max-width: 640px)").matches) $("board-title").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+
+      const justRolled = Boolean(
+        previous &&
+        previous.phase === "playing" &&
+        message.phase === "playing" &&
+        message.last_roll !== null &&
+        (message.dice !== null && previous.dice === null || message.last_action?.includes("rolled ")) &&
+        previous.revision !== message.revision
+      );
+      const isThreeSixes = Boolean(justRolled && message.last_action?.includes("three sixes"));
+      const becameMyTurn = Boolean(
+        previous &&
+        message.phase === "playing" &&
+        !message.paused &&
+        message.turn_id === message.you &&
+        (previous.turn_id !== message.you || previous.phase !== "playing")
+      );
+
+      render(justRolled, isThreeSixes);
+      if (becameMyTurn && !justRolled) LudoAudio.yourTurn();
+
+      if (previous?.phase === "waiting" && message.phase === "playing" && matchMedia("(max-width: 640px)").matches) {
+        $("board-title").scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
+      }
     } else if (message.type === "error") {
       pending = false;
       clearTimeout(actionTimer);
@@ -433,6 +871,10 @@ function resetSeat() {
   clearTimeout(reconnectTimer);
   clearInterval(heartbeatTimer);
   clearTimeout(actionTimer);
+  clearInterval(diceAnimTimer);
+  diceAnimTimer = null;
+  for (const key of activeHopTimers.keys()) cancelHop(key);
+  prevProgress.clear();
   const previousSocket = socket;
   socket = null;
   previousSocket?.close();
@@ -448,19 +890,27 @@ function resetSeat() {
   render();
 }
 
-$("roll-button").addEventListener("click", () => sendAction({ type: "roll" }));
+function triggerRoll() {
+  if ($("roll-button").disabled) return;
+  sendAction({ type: "roll" });
+}
+
+$("roll-button").addEventListener("click", triggerRoll);
+$("dice").addEventListener("click", triggerRoll);
+
 $("ready-button").addEventListener("click", () => {
+  LudoAudio.click();
   const me = ludoState?.players.find((p) => p.id === ludoState.you);
   if (ludoState?.phase === "finished") sendAction({ type: "rematch" });
-  else if (ludoState?.phase === "playing") $("board-title").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  else if (ludoState?.phase === "playing") $("board-title").scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
   else sendAction({ type: "ready", ready: !me?.ready });
 });
-$("rematch-button").addEventListener("click", () => sendAction({ type: "rematch" }));
+$("rematch-button").addEventListener("click", () => { LudoAudio.click(); sendAction({ type: "rematch" }); });
 $("view-board-button").addEventListener("click", () => $("result-dialog").close());
 $("leave-button").addEventListener("click", () => { if (connected) $("leave-dialog").showModal(); else toast("Reconnecting. Your seat stays saved for five minutes."); });
 $("stay-button").addEventListener("click", () => $("leave-dialog").close());
 $("confirm-leave").addEventListener("click", () => sendAction({ type: "leave" }));
-$("rules-button").addEventListener("click", () => $("rules-dialog").showModal());
+$("rules-button").addEventListener("click", () => { LudoAudio.click(); $("rules-dialog").showModal(); });
 for (const id of ["close-rules", "got-it"]) $(id).addEventListener("click", () => $("rules-dialog").close());
 for (const dialog of document.querySelectorAll("dialog")) {
   dialog.addEventListener("click", (event) => {
