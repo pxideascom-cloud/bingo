@@ -277,6 +277,10 @@ function toast(message) {
   toastTimer = setTimeout(() => { $("toast").hidden = true; }, 4500);
 }
 
+function selectedEntryColor() {
+  return document.querySelector("input[name=player-color]:checked")?.value || "auto";
+}
+
 function setMode(mode, focus = false) {
   entryMode = mode;
   for (const tabMode of ["create", "join"]) {
@@ -289,8 +293,17 @@ function setMode(mode, focus = false) {
   $("seat-options").hidden = mode !== "create";
   $("room-code-field").hidden = mode !== "join";
   $("room-code").required = mode === "join";
+  $("color-option-auto").hidden = mode !== "join";
+  if (mode === "join") {
+    const autoInput = document.querySelector("input[name=player-color][value=auto]");
+    if (autoInput) autoInput.checked = true;
+  } else if (selectedEntryColor() === "auto") {
+    const redInput = document.querySelector("input[name=player-color][value=red]");
+    if (redInput) redInput.checked = true;
+  }
   $("entry-submit").firstElementChild.textContent = mode === "create" ? "Create a room" : "Join the room";
   $("form-error").hidden = true;
+  render();
   if (focus) $(`${mode}-tab`).focus();
 }
 
@@ -303,7 +316,7 @@ for (const mode of ["create", "join"]) {
   });
 }
 $("room-code").addEventListener("input", (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z2-9]/g, ""); });
-document.querySelectorAll("input[name=player-count]").forEach((input) => input.addEventListener("change", render));
+document.querySelectorAll("input[name=player-count], input[name=player-color]").forEach((input) => input.addEventListener("change", render));
 
 $("entry-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -316,7 +329,11 @@ $("entry-form").addEventListener("submit", async (event) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
-    const body = entryMode === "create" ? { name, game: "ludo", player_count: Number(document.querySelector("input[name=player-count]:checked").value) } : { name };
+    const chosenColor = selectedEntryColor();
+    const colorPayload = chosenColor !== "auto" ? { color: chosenColor } : {};
+    const body = entryMode === "create"
+      ? { name, game: "ludo", player_count: Number(document.querySelector("input[name=player-count]:checked").value), ...colorPayload }
+      : { name, ...colorPayload };
     const response = await fetch(entryMode === "create" ? "/api/rooms" : `/api/rooms/${encodeURIComponent(code)}/join`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: controller.signal,
     });
@@ -490,10 +507,17 @@ function animateTokenHop(button, key, player, token, fromProgress, toProgress, f
   return (steps - 1) * stepMs + 40;
 }
 
+function activeTableColors() {
+  if (ludoState?.colors) return ludoState.colors;
+  const count = ludoState?.player_count || Number(document.querySelector("input[name=player-count]:checked").value);
+  if (count === 4) return COLORS;
+  const chosen = selectedEntryColor();
+  return (chosen === "green" || chosen === "blue") ? ["green", "blue"] : ["red", "yellow"];
+}
+
 function renderTokens() {
   if (!layout) return;
-  const count = ludoState?.player_count || Number(document.querySelector("input[name=player-count]:checked").value);
-  const activeColors = count === 2 ? ["red", "yellow"] : COLORS;
+  const activeColors = activeTableColors();
   const currentTurnPlayer = ludoState?.phase === "playing" && !ludoState.paused
     ? ludoState.players.find((p) => p.id === ludoState.turn_id)
     : null;
@@ -679,8 +703,7 @@ function animateDiceRoll(finalValue, isThreeSixes = false) {
 function renderPlayers() {
   $("roster").replaceChildren();
   $("player-progress").replaceChildren();
-  const count = ludoState?.player_count || ludoSeat?.player_count || 2;
-  const colors = count === 2 ? ["red", "yellow"] : COLORS;
+  const colors = ludoState?.colors || ((ludoSeat?.player_count || 2) === 2 ? ["red", "yellow"] : COLORS);
   for (const color of colors) {
     const player = ludoState?.players.find((p) => p.color === color);
     const row = document.createElement("div");
@@ -834,6 +857,38 @@ function render(justRolled = false, isThreeSixes = false) {
     $("round-label").textContent = `ROUND ${String(ludoState?.round || 1).padStart(2, "0")}`;
     const open = count - (ludoState?.players.length || 1);
     $("invite-hint").textContent = open ? `Share the link. ${open} seat${open === 1 ? "" : "s"} still open.` : "Your table is full. Let the race begin.";
+    const colorBlock = $("room-color-block");
+    const colorGrid = $("room-color-grid");
+    if (colorBlock && colorGrid) {
+      const showPicker = Boolean(ludoState?.phase === "waiting" && me);
+      colorBlock.hidden = !showPicker;
+      if (showPicker) {
+        colorGrid.replaceChildren();
+        const canPickAnyPair = ludoState.player_count === 2 && ludoState.players.length === 1;
+        const allowed = canPickAnyPair ? COLORS : (ludoState.colors || COLORS);
+        for (const color of COLORS) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          const isMine = me.color === color;
+          const takenByOther = ludoState.players.some((p) => p.id !== me.id && p.color === color);
+          const unavailable = !allowed.includes(color) || takenByOther;
+          btn.className = `room-color-btn${isMine ? " selected" : ""}`;
+          btn.disabled = !connected || pending || isMine || unavailable;
+          btn.setAttribute("aria-pressed", String(isMine));
+          const swatch = document.createElement("span");
+          swatch.className = `color-swatch ${color}`;
+          swatch.setAttribute("aria-hidden", "true");
+          const label = document.createElement("span");
+          label.textContent = color[0].toUpperCase() + color.slice(1);
+          btn.append(swatch, label);
+          btn.addEventListener("click", () => {
+            LudoAudio.click();
+            sendAction({ type: "color", color });
+          });
+          colorGrid.append(btn);
+        }
+      }
+    }
     $("room-notice").hidden = !ludoState?.notice;
     $("room-notice").textContent = ludoState?.notice || "";
     $("ready-button").disabled = !connected || pending;
@@ -960,12 +1015,13 @@ function singleForcedTokenIndex() {
   if (ludoState.turn_id !== ludoState.you || ludoState.dice === null) return null;
   const moves = ludoState.legal_moves;
   if (!moves || moves.length === 0) return null;
+  // Auto-move only when there is literally one legal token (e.g. only one token outside on 1-5),
+  // or when multiple legal tokens are stacked on the exact same board square (never in the yard, so players can pick which token to open).
   if (moves.length === 1) return moves[0];
-  // If all legal tokens are at the exact same progress (e.g. all in yard on a 6, or stacked together), there is no real choice.
   const me = ludoState.players.find((p) => p.id === ludoState.you);
   if (!me) return null;
   const firstProg = me.tokens[moves[0]]?.progress;
-  if (moves.every((idx) => me.tokens[idx]?.progress === firstProg)) return moves[0];
+  if (firstProg >= 0 && moves.every((idx) => me.tokens[idx]?.progress === firstProg)) return moves[0];
   return null;
 }
 

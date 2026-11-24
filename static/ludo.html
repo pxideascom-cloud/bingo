@@ -31,6 +31,16 @@
           <form id="entry-form" role="tabpanel" aria-labelledby="create-tab">
             <label for="player-name">YOUR NAME</label><input id="player-name" name="name" maxlength="18" autocomplete="nickname" placeholder="What should we call you?" required>
             <fieldset class="seat-options" id="seat-options"><legend>HOW MANY PLAYERS?</legend><label><input type="radio" name="player-count" value="2" checked><span>2 players<small>Opposite colors</small></span></label><label><input type="radio" name="player-count" value="4"><span>4 players<small>The full table</small></span></label></fieldset>
+            <fieldset class="color-picker" id="color-picker">
+              <legend>CHOOSE YOUR COLOR</legend>
+              <div class="color-picker-grid">
+                <label class="color-option" id="color-option-auto" hidden><input type="radio" name="player-color" value="auto"><span class="color-swatch auto" aria-hidden="true">✦</span><span>Any</span></label>
+                <label class="color-option"><input type="radio" name="player-color" value="red" checked><span class="color-swatch red" aria-hidden="true"></span><span>Red</span></label>
+                <label class="color-option"><input type="radio" name="player-color" value="green"><span class="color-swatch green" aria-hidden="true"></span><span>Green</span></label>
+                <label class="color-option"><input type="radio" name="player-color" value="yellow"><span class="color-swatch yellow" aria-hidden="true"></span><span>Yellow</span></label>
+                <label class="color-option"><input type="radio" name="player-color" value="blue"><span class="color-swatch blue" aria-hidden="true"></span><span>Blue</span></label>
+              </div>
+            </fieldset>
             <div id="room-code-field" hidden><label for="room-code">ROOM CODE</label><input id="room-code" name="room" placeholder="e.g. ABC234" maxlength="6" minlength="6" pattern="[A-Za-z2-9]{6}" autocomplete="off" autocapitalize="characters" spellcheck="false"></div>
             <p class="form-error" id="form-error" role="alert" hidden></p><button class="button button-primary entry-submit" id="entry-submit" type="submit"><span>Create a room</span><span aria-hidden="true">↗</span></button>
           </form><p class="privacy-note">A private room for your friends.</p>
@@ -39,7 +49,12 @@
           <div class="section-label"><span class="eyebrow muted">YOUR LUDO TABLE</span><span class="round-label" id="round-label">ROUND 01</span></div><h2 id="room-heading">Room for two.</h2>
           <div class="invite-block"><span class="eyebrow muted">INVITE CODE</span><strong id="invite-code">———</strong><button id="copy-code" class="text-button" type="button">Copy code</button></div>
           <button id="copy-link" class="button button-outline full-width" type="button">Copy invite link ↗</button><p class="invite-hint" id="invite-hint"></p>
-          <div class="roster" id="roster"></div><p class="room-notice" id="room-notice" role="status" hidden></p>
+          <div class="roster" id="roster"></div>
+          <div class="room-color-block" id="room-color-block" hidden>
+            <span class="eyebrow muted">SWITCH YOUR COLOR</span>
+            <div class="room-color-grid" id="room-color-grid" role="group" aria-label="Switch your color"></div>
+          </div>
+          <p class="room-notice" id="room-notice" role="status" hidden></p>
           <button class="button button-primary full-width" id="ready-button" type="button">I'm ready ✓</button><p class="ready-note" id="ready-note">The game starts when everyone is ready.</p><button class="text-button leave-button" id="leave-button" type="button">Leave room ↗</button>
         </section>
       </aside>
