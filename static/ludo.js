@@ -31,6 +31,7 @@ let actionTimer = null;
 let toastTimer = null;
 let calloutTimer = null;
 let diceAnimTimer = null;
+let autoMoveTimer = null;
 let reconnectAttempts = 0;
 let lastPong = 0;
 let resultShown = "";
@@ -106,9 +107,13 @@ const LudoAudio = {
     tone(1318.5, 0.07, 0.22, "sine", 0.07);
   },
   capture() {
-    tone(620, 0, 0.12, "sawtooth", 0.08, 220);
-    tone(440, 0.1, 0.16, "sawtooth", 0.08, 140);
-    tone(784, 0.22, 0.22, "triangle", 0.11, 1046.5);
+    // Punchy impact bass boom + KO descending whistle + triumphant brass chime
+    tone(145, 0, 0.18, "sine", 0.18, 48);
+    tone(720, 0.02, 0.18, "sawtooth", 0.085, 190);
+    tone(480, 0.14, 0.22, "sawtooth", 0.075, 110);
+    tone(659.25, 0.24, 0.16, "triangle", 0.11);
+    tone(880, 0.32, 0.18, "triangle", 0.12);
+    tone(1174.66, 0.4, 0.26, "triangle", 0.12);
   },
   home() {
     [523.25, 659.25, 783.99, 987.77, 1046.5].forEach((f, i) => tone(f, i * 0.07, 0.24, "triangle", 0.12));
@@ -171,7 +176,80 @@ function spawnBoardRing(cell, variant = "") {
   ring.style.left = `${(cell[1] + 0.5) / 15 * 100}%`;
   ring.style.top = `${(cell[0] + 0.5) / 15 * 100}%`;
   layer.append(ring);
-  setTimeout(() => ring.remove(), 600);
+  setTimeout(() => ring.remove(), 780);
+}
+
+const COLOR_HEX = { red: "#ff4d48", green: "#1ed760", yellow: "#ffd44d", blue: "#4da1ff" };
+
+function spawnSparks(cell, count = 14, palette = ["#ffd44d", "#ff6b35", "#ffffff"], stars = false) {
+  if (prefersReducedMotion()) return;
+  const layer = $("board-fx");
+  if (!layer || !cell) return;
+  const cx = `${(cell[1] + 0.5) / 15 * 100}%`;
+  const cy = `${(cell[0] + 0.5) / 15 * 100}%`;
+  for (let i = 0; i < count; i++) {
+    const spark = document.createElement("span");
+    spark.className = `fx-spark${stars ? " star" : ""}`;
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.35;
+    const dist = 34 + Math.random() * 44;
+    const color = palette[i % palette.length];
+    spark.style.left = cx;
+    spark.style.top = cy;
+    spark.style.color = color;
+    spark.style.background = color;
+    spark.style.setProperty("--dx", `${Math.cos(angle) * dist}px`);
+    spark.style.setProperty("--dy", `${Math.sin(angle) * dist}px`);
+    layer.append(spark);
+    setTimeout(() => spark.remove(), 720);
+  }
+}
+
+function triggerCaptureFX(cell, victimColor, attackerBtn) {
+  if (prefersReducedMotion()) return;
+  const layer = $("board-fx");
+  if (layer && cell) {
+    const flash = document.createElement("div");
+    flash.className = "fx-flash";
+    flash.style.left = `${(cell[1] + 0.5) / 15 * 100}%`;
+    flash.style.top = `${(cell[0] + 0.5) / 15 * 100}%`;
+    layer.append(flash);
+    setTimeout(() => flash.remove(), 400);
+  }
+  spawnBoardRing(cell, "capture");
+  spawnBoardRing(cell, "capture-outer");
+  spawnSparks(cell, 16, [COLOR_HEX[victimColor] || "#ff4d48", "#ffd44d", "#ff7a29", "#ffffff"], true);
+
+  const frame = $("ludo-board-frame");
+  if (frame) {
+    frame.classList.remove("board-shake");
+    void frame.offsetWidth;
+    frame.classList.add("board-shake");
+    setTimeout(() => frame.classList.remove("board-shake"), 380);
+  }
+  if (attackerBtn) {
+    attackerBtn.classList.remove("attacker-slam");
+    void attackerBtn.offsetWidth;
+    attackerBtn.classList.add("attacker-slam");
+    setTimeout(() => attackerBtn.classList.remove("attacker-slam"), 460);
+  }
+  LudoAudio.capture();
+  showCallout("CAPTURED! +1 ROLL 💥", "capture");
+}
+
+function triggerHomeFX() {
+  if (prefersReducedMotion()) return;
+  const center = document.querySelector(".ludo-center");
+  if (center) {
+    center.classList.remove("celebrate");
+    void center.offsetWidth;
+    center.classList.add("celebrate");
+    setTimeout(() => center.classList.remove("celebrate"), 740);
+  }
+  spawnBoardRing([7, 7], "home");
+  spawnBoardRing([7, 7], "capture-outer");
+  spawnSparks([7, 7], 18, ["#ffd44d", "#fff6b0", "#ff9f1c", "#ffffff"], true);
+  LudoAudio.home();
+  showCallout("TOKEN HOME! +1 ROLL ♛");
 }
 
 function launchConfetti() {
@@ -376,7 +454,7 @@ function positionToken(button, cell, offsetX = 0, offsetY = 0, size = "5.4%", ex
   button.style.width = button.style.height = size;
 }
 
-function animateTokenHop(button, key, player, token, fromProgress, toProgress, finalOffsetX, finalOffsetY, finalSize) {
+function animateTokenHop(button, key, player, token, fromProgress, toProgress, finalOffsetX, finalOffsetY, finalSize, onLand = null) {
   cancelHop(key);
   const timers = [];
   const steps = toProgress - fromProgress;
@@ -394,13 +472,13 @@ function animateTokenHop(button, key, player, token, fromProgress, toProgress, f
       timers.push(t2);
       if (isLast) {
         activeHopTimers.delete(key);
+        if (onLand) onLand();
         if (toProgress === 56) {
-          LudoAudio.home();
-          spawnBoardRing([7, 7], "home");
-          showCallout("HOME! ♛");
+          triggerHomeFX();
         } else if (toProgress <= 50) {
           const trackIdx = (layout.starts[player.color] + toProgress) % layout.track.length;
           if (layout.safe_squares.includes(trackIdx)) {
+            spawnBoardRing(cell, "safe");
             LudoAudio.safeSquare();
           }
         }
@@ -409,6 +487,7 @@ function animateTokenHop(button, key, player, token, fromProgress, toProgress, f
     timers.push(t);
   }
   activeHopTimers.set(key, timers);
+  return (steps - 1) * stepMs + 40;
 }
 
 function renderTokens() {
@@ -435,7 +514,9 @@ function renderTokens() {
 
   const liveKeys = new Set();
   const groups = new Map();
-  let capturedCell = null;
+  const capturedVictims = [];
+  let attackerButton = null;
+  let attackerImpactDelay = 0;
 
   for (const player of players) {
     for (const token of player.tokens) {
@@ -456,6 +537,7 @@ function renderTokens() {
         button = document.createElement("button");
         button.type = "button";
         button.addEventListener("click", () => {
+          clearTimeout(autoMoveTimer);
           clearTargetHighlight();
           sendAction({ type: "move", token_index: token.index });
         });
@@ -488,14 +570,19 @@ function renderTokens() {
           cancelHop(key);
           positionToken(button, displayCell, offsetX, offsetY, size, false);
           button.classList.add("spawning");
-          setTimeout(() => button.classList.remove("spawning"), 380);
+          setTimeout(() => button.classList.remove("spawning"), 400);
+          spawnBoardRing(displayCell, "spawn");
+          spawnSparks(displayCell, 8, [COLOR_HEX[player.color] || "#ffd44d", "#ffffff"]);
           LudoAudio.exitYard();
         } else if (oldProg >= 0 && token.progress > oldProg && token.progress - oldProg <= 6) {
-          animateTokenHop(button, key, player, token, oldProg, token.progress, offsetX, offsetY, size);
+          attackerButton = button;
+          attackerImpactDelay = animateTokenHop(button, key, player, token, oldProg, token.progress, offsetX, offsetY, size);
         } else if (oldProg >= 0 && token.progress === -1) {
           cancelHop(key);
-          capturedCell = cellForProgress(player.color, token.index, oldProg);
-          positionToken(button, displayCell, 0, 0, size, true);
+          const oldCell = cellForProgress(player.color, token.index, oldProg);
+          // Hold victim at capture square until attacker lands, then fly back dramatically!
+          positionToken(button, oldCell, 0, 0, "5.4%", false);
+          capturedVictims.push({ button, oldCell, yardCell: displayCell, color: player.color, key });
         } else {
           cancelHop(key);
           positionToken(button, displayCell, inYard ? 0 : offsetX, inYard ? 0 : offsetY, size, inYard);
@@ -508,10 +595,18 @@ function renderTokens() {
     });
   }
 
-  if (capturedCell && !reduced) {
-    LudoAudio.capture();
-    spawnBoardRing(capturedCell, "capture");
-    showCallout("CAPTURED! 💥", "capture");
+  if (capturedVictims.length > 0 && !reduced) {
+    const impactDelay = attackerImpactDelay;
+    const primary = capturedVictims[0];
+    const impactTimer = setTimeout(() => {
+      triggerCaptureFX(primary.oldCell, primary.color, attackerButton);
+      for (const victim of capturedVictims) {
+        victim.button.classList.add("victim-retreat");
+        positionToken(victim.button, victim.yardCell, 0, 0, "5.4%", true);
+        setTimeout(() => victim.button.classList.remove("victim-retreat"), 600);
+      }
+    }, impactDelay);
+    activeHopTimers.set("__capture__", [impactTimer]);
   }
 
   for (const [key, button] of boardTokens) {
@@ -724,6 +819,7 @@ function render(justRolled = false, isThreeSixes = false) {
         button.addEventListener("mouseleave", clearTargetHighlight);
       }
       button.addEventListener("click", () => {
+        clearTimeout(autoMoveTimer);
         clearTargetHighlight();
         sendAction({ type: "move", token_index: token.index });
       });
@@ -830,6 +926,7 @@ function connect() {
 
       render(justRolled, isThreeSixes);
       if (becameMyTurn && !justRolled) LudoAudio.yourTurn();
+      scheduleAutoMoveIfNoChoice(justRolled);
 
       if (previous?.phase === "waiting" && message.phase === "playing" && matchMedia("(max-width: 640px)").matches) {
         $("board-title").scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
@@ -858,7 +955,42 @@ function connect() {
   ws.addEventListener("error", () => { /* Close triggers reconnection. */ });
 }
 
+function singleForcedTokenIndex() {
+  if (!connected || pending || !ludoState || ludoState.phase !== "playing" || ludoState.paused) return null;
+  if (ludoState.turn_id !== ludoState.you || ludoState.dice === null) return null;
+  const moves = ludoState.legal_moves;
+  if (!moves || moves.length === 0) return null;
+  if (moves.length === 1) return moves[0];
+  // If all legal tokens are at the exact same progress (e.g. all in yard on a 6, or stacked together), there is no real choice.
+  const me = ludoState.players.find((p) => p.id === ludoState.you);
+  if (!me) return null;
+  const firstProg = me.tokens[moves[0]]?.progress;
+  if (moves.every((idx) => me.tokens[idx]?.progress === firstProg)) return moves[0];
+  return null;
+}
+
+function scheduleAutoMoveIfNoChoice(justRolled = false) {
+  clearTimeout(autoMoveTimer);
+  autoMoveTimer = null;
+  const forcedIndex = singleForcedTokenIndex();
+  if (forcedIndex === null) return;
+  const expectedRevision = ludoState.revision;
+  const delay = prefersReducedMotion() ? 900 : (justRolled ? 470 : 200);
+  if (!prefersReducedMotion()) {
+    $("board-status-text").textContent = `Auto-moving token ${forcedIndex + 1}…`;
+  }
+  autoMoveTimer = setTimeout(() => {
+    autoMoveTimer = null;
+    if (!connected || pending || !ludoState || ludoState.revision !== expectedRevision) return;
+    if (singleForcedTokenIndex() !== forcedIndex) return;
+    clearTargetHighlight();
+    sendAction({ type: "move", token_index: forcedIndex });
+  }, delay);
+}
+
 function sendAction(message) {
+  clearTimeout(autoMoveTimer);
+  autoMoveTimer = null;
   if (!socket || socket.readyState !== WebSocket.OPEN || !connected) { toast("Reconnecting to your table. Just a moment…"); return; }
   if (pending) return;
   pending = true;
@@ -871,6 +1003,8 @@ function resetSeat() {
   clearTimeout(reconnectTimer);
   clearInterval(heartbeatTimer);
   clearTimeout(actionTimer);
+  clearTimeout(autoMoveTimer);
+  autoMoveTimer = null;
   clearInterval(diceAnimTimer);
   diceAnimTimer = null;
   for (const key of activeHopTimers.keys()) cancelHop(key);
@@ -897,6 +1031,15 @@ function triggerRoll() {
 
 $("roll-button").addEventListener("click", triggerRoll);
 $("dice").addEventListener("click", triggerRoll);
+document.addEventListener("keydown", (event) => {
+  if (event.code !== "Space" || event.repeat) return;
+  const tag = event.target?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "A" || document.querySelector("dialog[open]")) return;
+  if (!$("roll-button").disabled) {
+    event.preventDefault();
+    triggerRoll();
+  }
+});
 
 $("ready-button").addEventListener("click", () => {
   LudoAudio.click();
